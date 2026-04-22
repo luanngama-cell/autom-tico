@@ -14,16 +14,344 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      agent_tokens: {
+        Row: {
+          connection_id: string
+          created_at: string
+          id: string
+          last_used_at: string | null
+          name: string
+          revoked_at: string | null
+          token_hash: string
+        }
+        Insert: {
+          connection_id: string
+          created_at?: string
+          id?: string
+          last_used_at?: string | null
+          name: string
+          revoked_at?: string | null
+          token_hash: string
+        }
+        Update: {
+          connection_id?: string
+          created_at?: string
+          id?: string
+          last_used_at?: string | null
+          name?: string
+          revoked_at?: string | null
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_tokens_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "sql_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      custom_apis: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_public: boolean
+          last_test_result: Json | null
+          last_tested_at: string | null
+          method: string
+          name: string
+          query_definition: Json
+          route: string
+          status: string
+          sync_table_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_public?: boolean
+          last_test_result?: Json | null
+          last_tested_at?: string | null
+          method?: string
+          name: string
+          query_definition?: Json
+          route: string
+          status?: string
+          sync_table_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_public?: boolean
+          last_test_result?: Json | null
+          last_tested_at?: string | null
+          method?: string
+          name?: string
+          query_definition?: Json
+          route?: string
+          status?: string
+          sync_table_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "custom_apis_sync_table_id_fkey"
+            columns: ["sync_table_id"]
+            isOneToOne: false
+            referencedRelation: "sync_tables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sql_connections: {
+        Row: {
+          created_at: string
+          database_name: string
+          encrypt: boolean
+          host: string
+          id: string
+          last_seen_at: string | null
+          name: string
+          notes: string | null
+          port: number
+          status: string
+          trust_server_cert: boolean
+          updated_at: string
+          username: string
+        }
+        Insert: {
+          created_at?: string
+          database_name: string
+          encrypt?: boolean
+          host: string
+          id?: string
+          last_seen_at?: string | null
+          name: string
+          notes?: string | null
+          port?: number
+          status?: string
+          trust_server_cert?: boolean
+          updated_at?: string
+          username: string
+        }
+        Update: {
+          created_at?: string
+          database_name?: string
+          encrypt?: boolean
+          host?: string
+          id?: string
+          last_seen_at?: string | null
+          name?: string
+          notes?: string | null
+          port?: number
+          status?: string
+          trust_server_cert?: boolean
+          updated_at?: string
+          username?: string
+        }
+        Relationships: []
+      }
+      sync_logs: {
+        Row: {
+          connection_id: string | null
+          created_at: string
+          details: Json | null
+          duration_ms: number | null
+          event: string
+          id: string
+          level: string
+          message: string | null
+          rows_deleted: number
+          rows_inserted: number
+          rows_updated: number
+          sync_table_id: string | null
+        }
+        Insert: {
+          connection_id?: string | null
+          created_at?: string
+          details?: Json | null
+          duration_ms?: number | null
+          event: string
+          id?: string
+          level?: string
+          message?: string | null
+          rows_deleted?: number
+          rows_inserted?: number
+          rows_updated?: number
+          sync_table_id?: string | null
+        }
+        Update: {
+          connection_id?: string | null
+          created_at?: string
+          details?: Json | null
+          duration_ms?: number | null
+          event?: string
+          id?: string
+          level?: string
+          message?: string | null
+          rows_deleted?: number
+          rows_inserted?: number
+          rows_updated?: number
+          sync_table_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sync_logs_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "sql_connections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sync_logs_sync_table_id_fkey"
+            columns: ["sync_table_id"]
+            isOneToOne: false
+            referencedRelation: "sync_tables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sync_tables: {
+        Row: {
+          connection_id: string
+          created_at: string
+          enabled: boolean
+          has_rowversion: boolean
+          id: string
+          last_checksum: string | null
+          last_error: string | null
+          last_synced_at: string | null
+          primary_keys: string[]
+          row_count: number
+          schema_hash: string | null
+          schema_name: string
+          strategy: string
+          table_name: string
+          updated_at: string
+        }
+        Insert: {
+          connection_id: string
+          created_at?: string
+          enabled?: boolean
+          has_rowversion?: boolean
+          id?: string
+          last_checksum?: string | null
+          last_error?: string | null
+          last_synced_at?: string | null
+          primary_keys?: string[]
+          row_count?: number
+          schema_hash?: string | null
+          schema_name?: string
+          strategy?: string
+          table_name: string
+          updated_at?: string
+        }
+        Update: {
+          connection_id?: string
+          created_at?: string
+          enabled?: boolean
+          has_rowversion?: boolean
+          id?: string
+          last_checksum?: string | null
+          last_error?: string | null
+          last_synced_at?: string | null
+          primary_keys?: string[]
+          row_count?: number
+          schema_hash?: string | null
+          schema_name?: string
+          strategy?: string
+          table_name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sync_tables_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "sql_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      synced_rows: {
+        Row: {
+          data: Json
+          id: string
+          pk: Json
+          pk_hash: string
+          row_hash: string
+          sync_table_id: string
+          updated_at: string
+        }
+        Insert: {
+          data: Json
+          id?: string
+          pk: Json
+          pk_hash: string
+          row_hash: string
+          sync_table_id: string
+          updated_at?: string
+        }
+        Update: {
+          data?: Json
+          id?: string
+          pk?: Json
+          pk_hash?: string
+          row_hash?: string
+          sync_table_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "synced_rows_sync_table_id_fkey"
+            columns: ["sync_table_id"]
+            isOneToOne: false
+            referencedRelation: "sync_tables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "master"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +478,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["master"],
+    },
   },
 } as const
