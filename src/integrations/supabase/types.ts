@@ -52,6 +52,192 @@ export type Database = {
           },
         ]
       }
+      bi_deliveries: {
+        Row: {
+          changed_sections: string[]
+          created_at: string
+          destination_id: string
+          duration_ms: number | null
+          error_message: string | null
+          http_status: number | null
+          id: string
+          payload_bytes: number | null
+          payload_kind: string
+          request_ip: string | null
+          rows_affected: number
+          status: string
+          triggered_by: string
+        }
+        Insert: {
+          changed_sections?: string[]
+          created_at?: string
+          destination_id: string
+          duration_ms?: number | null
+          error_message?: string | null
+          http_status?: number | null
+          id?: string
+          payload_bytes?: number | null
+          payload_kind?: string
+          request_ip?: string | null
+          rows_affected?: number
+          status: string
+          triggered_by?: string
+        }
+        Update: {
+          changed_sections?: string[]
+          created_at?: string
+          destination_id?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          http_status?: number | null
+          id?: string
+          payload_bytes?: number | null
+          payload_kind?: string
+          request_ip?: string | null
+          rows_affected?: number
+          status?: string
+          triggered_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bi_deliveries_destination_id_fkey"
+            columns: ["destination_id"]
+            isOneToOne: false
+            referencedRelation: "bi_destinations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bi_destination_tokens: {
+        Row: {
+          created_at: string
+          destination_id: string
+          id: string
+          last_used_at: string | null
+          name: string
+          revoked_at: string | null
+          token_hash: string
+          token_prefix: string
+        }
+        Insert: {
+          created_at?: string
+          destination_id: string
+          id?: string
+          last_used_at?: string | null
+          name: string
+          revoked_at?: string | null
+          token_hash: string
+          token_prefix: string
+        }
+        Update: {
+          created_at?: string
+          destination_id?: string
+          id?: string
+          last_used_at?: string | null
+          name?: string
+          revoked_at?: string | null
+          token_hash?: string
+          token_prefix?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bi_destination_tokens_destination_id_fkey"
+            columns: ["destination_id"]
+            isOneToOne: false
+            referencedRelation: "bi_destinations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bi_destinations: {
+        Row: {
+          allowed_ips: string[]
+          created_at: string
+          description: string | null
+          enabled: boolean
+          endpoint_url: string
+          id: string
+          include_patient_registry: boolean
+          last_error: string | null
+          last_pushed_at: string | null
+          last_status: string | null
+          name: string
+          push_interval_minutes: number
+          source_database_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          allowed_ips?: string[]
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          endpoint_url: string
+          id?: string
+          include_patient_registry?: boolean
+          last_error?: string | null
+          last_pushed_at?: string | null
+          last_status?: string | null
+          name: string
+          push_interval_minutes?: number
+          source_database_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          allowed_ips?: string[]
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          endpoint_url?: string
+          id?: string
+          include_patient_registry?: boolean
+          last_error?: string | null
+          last_pushed_at?: string | null
+          last_status?: string | null
+          name?: string
+          push_interval_minutes?: number
+          source_database_name?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      bi_snapshots: {
+        Row: {
+          destination_id: string
+          generated_at: string
+          payload: Json
+          payload_hash: string | null
+          section_hashes: Json
+          source_watermarks: Json
+          updated_at: string
+        }
+        Insert: {
+          destination_id: string
+          generated_at?: string
+          payload?: Json
+          payload_hash?: string | null
+          section_hashes?: Json
+          source_watermarks?: Json
+          updated_at?: string
+        }
+        Update: {
+          destination_id?: string
+          generated_at?: string
+          payload?: Json
+          payload_hash?: string | null
+          section_hashes?: Json
+          source_watermarks?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bi_snapshots_destination_id_fkey"
+            columns: ["destination_id"]
+            isOneToOne: true
+            referencedRelation: "bi_destinations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       custom_apis: {
         Row: {
           created_at: string
