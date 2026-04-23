@@ -19,6 +19,7 @@ import { Route as DashboardConnectionsRouteImport } from './routes/dashboard.con
 import { Route as DashboardBiRouteImport } from './routes/dashboard.bi'
 import { Route as DashboardApisRouteImport } from './routes/dashboard.apis'
 import { Route as DashboardAgentRouteImport } from './routes/dashboard.agent'
+import { Route as ApiPublicBiPushRouteImport } from './routes/api.public.bi.push'
 import { Route as ApiPublicAgentManifestRouteImport } from './routes/api.public.agent.manifest'
 import { Route as ApiPublicAgentIngestRouteImport } from './routes/api.public.agent.ingest'
 
@@ -72,6 +73,11 @@ const DashboardAgentRoute = DashboardAgentRouteImport.update({
   path: '/agent',
   getParentRoute: () => DashboardRoute,
 } as any)
+const ApiPublicBiPushRoute = ApiPublicBiPushRouteImport.update({
+  id: '/api/public/bi/push',
+  path: '/api/public/bi/push',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicAgentManifestRoute = ApiPublicAgentManifestRouteImport.update({
   id: '/api/public/agent/manifest',
   path: '/api/public/agent/manifest',
@@ -96,6 +102,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/tables': typeof DashboardTablesRoute
   '/api/public/agent/ingest': typeof ApiPublicAgentIngestRoute
   '/api/public/agent/manifest': typeof ApiPublicAgentManifestRoute
+  '/api/public/bi/push': typeof ApiPublicBiPushRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -110,6 +117,7 @@ export interface FileRoutesByTo {
   '/dashboard/tables': typeof DashboardTablesRoute
   '/api/public/agent/ingest': typeof ApiPublicAgentIngestRoute
   '/api/public/agent/manifest': typeof ApiPublicAgentManifestRoute
+  '/api/public/bi/push': typeof ApiPublicBiPushRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -125,6 +133,7 @@ export interface FileRoutesById {
   '/dashboard/tables': typeof DashboardTablesRoute
   '/api/public/agent/ingest': typeof ApiPublicAgentIngestRoute
   '/api/public/agent/manifest': typeof ApiPublicAgentManifestRoute
+  '/api/public/bi/push': typeof ApiPublicBiPushRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -141,6 +150,7 @@ export interface FileRouteTypes {
     | '/dashboard/tables'
     | '/api/public/agent/ingest'
     | '/api/public/agent/manifest'
+    | '/api/public/bi/push'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -155,6 +165,7 @@ export interface FileRouteTypes {
     | '/dashboard/tables'
     | '/api/public/agent/ingest'
     | '/api/public/agent/manifest'
+    | '/api/public/bi/push'
   id:
     | '__root__'
     | '/'
@@ -169,6 +180,7 @@ export interface FileRouteTypes {
     | '/dashboard/tables'
     | '/api/public/agent/ingest'
     | '/api/public/agent/manifest'
+    | '/api/public/bi/push'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -177,6 +189,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ApiPublicAgentIngestRoute: typeof ApiPublicAgentIngestRoute
   ApiPublicAgentManifestRoute: typeof ApiPublicAgentManifestRoute
+  ApiPublicBiPushRoute: typeof ApiPublicBiPushRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -251,6 +264,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardAgentRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/api/public/bi/push': {
+      id: '/api/public/bi/push'
+      path: '/api/public/bi/push'
+      fullPath: '/api/public/bi/push'
+      preLoaderRoute: typeof ApiPublicBiPushRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/agent/manifest': {
       id: '/api/public/agent/manifest'
       path: '/api/public/agent/manifest'
@@ -298,6 +318,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ApiPublicAgentIngestRoute: ApiPublicAgentIngestRoute,
   ApiPublicAgentManifestRoute: ApiPublicAgentManifestRoute,
+  ApiPublicBiPushRoute: ApiPublicBiPushRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

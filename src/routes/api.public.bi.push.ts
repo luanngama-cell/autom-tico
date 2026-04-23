@@ -1,0 +1,373 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { createHash, timingSafeEqual } from "crypto";
+import { z } from "zod";
+
+/**
+ * BI push endpoint.
+ *
+ * Recebe um JSON snapshot completo do agente Windows (resultado do script
+ * extrair-pmedico_19.sql) e distribui para todos os destinos `bi_destinations`
+ * habilitados.
+ *
+ * Auth:
+ *  - Bearer token = `${destinationId}.${rawToken}` OU header X-Agent-Secret
+ *    (modo "broadcast" - quando o agente tem o segredo geral, distribui para
+ *    todos os destinos enabled)
+ *
+ * Estratégia delta:
+ *  - Calcula sha256 do payload completo + sha256 por seção (top-level keys)
+ *  - Compara com bi_snapshots da última entrega
+ *  - Se payload_hash igual → no-op (loga skipped)
+ *  - Se mudou → POST para destination.endpoint_url com o JSON completo
+ *  - Salva snapshot novo + registra bi_deliveries
+ *
+ * Body: JSON livre (snapshot completo do BI). Limite ~10MB.
+ */
+
+const MAX_PAYLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
+
+function sha256Hex(input: string) {
+  return createHash("sha256").update(input).digest("hex");
+}
+
+function computeSectionHashes(payload: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of Object.keys(payload)) {
+    try {
+      out[key] = sha256Hex(JSON.stringify(payload[key]));
+    } catch {
+      out[key] = "";
+    }
+  }
+  return out;
+}
+
+function diffSections(
+  oldHashes: Record<string, string>,
+  newHashes: Record<string, string>
+): string[] {
+  const changed: string[] = [];
+  const allKeys = new Set([...Object.keys(oldHashes), ...Object.keys(newHashes)]);
+  for (const k of allKeys) {
+    if (oldHashes[k] !== newHashes[k]) changed.push(k);
+  }
+  return changed;
+}
+
+function getClientIp(request: Request): string | null {
+  return (
+    request.headers.get("cf-connecting-ip") ??
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    request.headers.get("x-real-ip") ??
+    null
+  );
+}
+
+function ipAllowed(ip: string | null, allowed: string[]): boolean {
+  if (!allowed || allowed.length === 0) return true; // sem restrição
+  if (!ip) return false;
+  return allowed.includes(ip);
+}
+
+async function authenticate(
+  request: Request
+): Promise<
+  | { mode: "broadcast" }
+  | { mode: "destination"; destinationId: string }
+  | { error: string; status: number }
+> {
+  const auth = request.headers.get("authorization") ?? "";
+  const agentSecret = request.headers.get("x-agent-secret") ?? "";
+  const expectedSecret = process.env.AGENT_INGEST_SECRET;
+
+  // Modo broadcast: agente confiável envia para todos os destinos enabled
+  if (agentSecret && expectedSecret) {
+    const a = Buffer.from(agentSecret);
+    const b = Buffer.from(expectedSecret);
+    if (a.length === b.length && timingSafeEqual(a, b)) {
+      return { mode: "broadcast" };
+    }
+  }
+
+  // Modo destino-específico: token de um bi_destination
+  const bearer = auth.replace(/^Bearer\s+/i, "");
+  if (!bearer) return { error: "Missing credentials", status: 401 };
+
+  const [destinationId, rawToken] = bearer.split(".");
+  if (!destinationId || !rawToken) {
+    return { error: "Invalid token format", status: 401 };
+  }
+
+  const tokenHash = sha256Hex(rawToken);
+  const { data: tokenRow } = await supabaseAdmin
+    .from("bi_destination_tokens")
+    .select("id, destination_id, revoked_at")
+    .eq("destination_id", destinationId)
+    .eq("token_hash", tokenHash)
+    .maybeSingle();
+
+  if (!tokenRow || tokenRow.revoked_at) {
+    return { error: "Unauthorized", status: 401 };
+  }
+
+  await supabaseAdmin
+    .from("bi_destination_tokens")
+    .update({ last_used_at: new Date().toISOString() })
+    .eq("id", tokenRow.id);
+
+  return { mode: "destination", destinationId };
+}
+
+async function deliverToDestination(args: {
+  destination: {
+    id: string;
+    name: string;
+    endpoint_url: string;
+    enabled: boolean;
+    allowed_ips: string[];
+  };
+  payload: Record<string, unknown>;
+  payloadStr: string;
+  payloadHash: string;
+  sectionHashes: Record<string, string>;
+  triggeredBy: string;
+  requestIp: string | null;
+}) {
+  const { destination, payload, payloadStr, payloadHash, sectionHashes, triggeredBy, requestIp } =
+    args;
+
+  if (!destination.enabled) {
+    return { destinationId: destination.id, status: "skipped", reason: "disabled" };
+  }
+
+  // Carrega snapshot anterior
+  const { data: prev } = await supabaseAdmin
+    .from("bi_snapshots")
+    .select("payload_hash, section_hashes")
+    .eq("destination_id", destination.id)
+    .maybeSingle();
+
+  const prevHashes = (prev?.section_hashes as Record<string, string> | null) ?? {};
+  const changedSections = prev?.payload_hash
+    ? diffSections(prevHashes, sectionHashes)
+    : Object.keys(sectionHashes);
+
+  if (prev?.payload_hash === payloadHash) {
+    await supabaseAdmin.from("bi_deliveries").insert({
+      destination_id: destination.id,
+      status: "skipped",
+      payload_kind: "snapshot",
+      triggered_by: triggeredBy,
+      request_ip: requestIp,
+      payload_bytes: payloadStr.length,
+      changed_sections: [],
+      rows_affected: 0,
+      duration_ms: 0,
+    });
+    return {
+      destinationId: destination.id,
+      status: "skipped",
+      reason: "no_changes",
+    };
+  }
+
+  // Envia para o endpoint do BI
+  const start = Date.now();
+  let httpStatus: number | null = null;
+  let errorMessage: string | null = null;
+  let deliveryStatus: "success" | "failed" = "failed";
+
+  try {
+    const res = await fetch(destination.endpoint_url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-BI-Source": "lovable-cmo-sync",
+        "X-Payload-Hash": payloadHash,
+      },
+      body: payloadStr,
+      signal: AbortSignal.timeout(60_000),
+    });
+    httpStatus = res.status;
+    if (res.ok) {
+      deliveryStatus = "success";
+    } else {
+      const text = await res.text().catch(() => "");
+      errorMessage = `HTTP ${res.status}: ${text.slice(0, 500)}`;
+    }
+  } catch (e) {
+    errorMessage = e instanceof Error ? e.message : "fetch failed";
+  }
+
+  const duration = Date.now() - start;
+
+  // Persistência: snapshot só atualiza em sucesso (para reentregar em retry)
+  if (deliveryStatus === "success") {
+    await supabaseAdmin.from("bi_snapshots").upsert(
+      {
+        destination_id: destination.id,
+        payload: payload as never,
+        payload_hash: payloadHash,
+        section_hashes: sectionHashes as never,
+        generated_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "destination_id" }
+    );
+    await supabaseAdmin
+      .from("bi_destinations")
+      .update({
+        last_pushed_at: new Date().toISOString(),
+        last_status: "success",
+        last_error: null,
+      })
+      .eq("id", destination.id);
+  } else {
+    await supabaseAdmin
+      .from("bi_destinations")
+      .update({
+        last_status: "failed",
+        last_error: errorMessage,
+      })
+      .eq("id", destination.id);
+  }
+
+  await supabaseAdmin.from("bi_deliveries").insert({
+    destination_id: destination.id,
+    status: deliveryStatus,
+    payload_kind: "snapshot",
+    triggered_by: triggeredBy,
+    request_ip: requestIp,
+    http_status: httpStatus,
+    payload_bytes: payloadStr.length,
+    changed_sections: changedSections,
+    rows_affected: 0,
+    duration_ms: duration,
+    error_message: errorMessage,
+  });
+
+  return {
+    destinationId: destination.id,
+    name: destination.name,
+    status: deliveryStatus,
+    http_status: httpStatus,
+    changed_sections: changedSections.length,
+    duration_ms: duration,
+    error: errorMessage,
+  };
+}
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers":
+    "Content-Type, Authorization, X-Agent-Secret, X-Triggered-By",
+};
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...corsHeaders },
+  });
+}
+
+export const Route = createFileRoute("/api/public/bi/push")({
+  server: {
+    handlers: {
+      OPTIONS: async () => new Response(null, { status: 204, headers: corsHeaders }),
+      POST: async ({ request }) => {
+        try {
+          const auth = await authenticate(request);
+          if ("error" in auth) return json({ error: auth.error }, auth.status);
+
+          const requestIp = getClientIp(request);
+          const triggeredBy = (request.headers.get("x-triggered-by") ?? "agent").slice(0, 64);
+
+          // Lê body com limite
+          const raw = await request.text();
+          if (raw.length > MAX_PAYLOAD_BYTES) {
+            return json({ error: "Payload too large" }, 413);
+          }
+
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(raw);
+          } catch {
+            return json({ error: "Invalid JSON" }, 400);
+          }
+
+          const payloadShape = z.record(z.string(), z.unknown()).safeParse(parsed);
+          if (!payloadShape.success) {
+            return json({ error: "Payload must be a JSON object" }, 400);
+          }
+          const payload = payloadShape.data;
+
+          // Hashes
+          const payloadStr = JSON.stringify(payload);
+          const payloadHash = sha256Hex(payloadStr);
+          const sectionHashes = computeSectionHashes(payload);
+
+          // Carrega destinos elegíveis
+          let destQuery = supabaseAdmin
+            .from("bi_destinations")
+            .select("id, name, endpoint_url, enabled, allowed_ips");
+
+          if (auth.mode === "destination") {
+            destQuery = destQuery.eq("id", auth.destinationId);
+          } else {
+            destQuery = destQuery.eq("enabled", true);
+          }
+
+          const { data: destinations, error: dErr } = await destQuery;
+          if (dErr) return json({ error: dErr.message }, 500);
+          if (!destinations || destinations.length === 0) {
+            return json({ ok: true, delivered: [], message: "No destinations" });
+          }
+
+          const results = [];
+          for (const dest of destinations) {
+            // Valida IP allowlist por destino
+            if (!ipAllowed(requestIp, dest.allowed_ips ?? [])) {
+              await supabaseAdmin.from("bi_deliveries").insert({
+                destination_id: dest.id,
+                status: "rejected",
+                payload_kind: "snapshot",
+                triggered_by: triggeredBy,
+                request_ip: requestIp,
+                payload_bytes: payloadStr.length,
+                changed_sections: [],
+                rows_affected: 0,
+                error_message: `IP ${requestIp ?? "unknown"} not in allowlist`,
+              });
+              results.push({
+                destinationId: dest.id,
+                name: dest.name,
+                status: "rejected",
+                error: "ip_not_allowed",
+              });
+              continue;
+            }
+
+            const r = await deliverToDestination({
+              destination: dest,
+              payload,
+              payloadStr,
+              payloadHash,
+              sectionHashes,
+              triggeredBy,
+              requestIp,
+            });
+            results.push(r);
+          }
+
+          return json({ ok: true, delivered: results });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "unknown";
+          console.error("bi push error", e);
+          return json({ error: msg }, 500);
+        }
+      },
+    },
+  },
+});
