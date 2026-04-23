@@ -189,9 +189,9 @@ export const Route = createFileRoute("/api/public/agent/ingest")({
             if (t.upserts.length > 0) {
               const rows = t.upserts.map((r) => ({
                 sync_table_id: syncTableId!,
-                pk: r.pk,
+                pk: r.pk as never,
                 pk_hash: pkHash(connectionId, t.schema_name, t.table_name, r.pk),
-                data: r.data,
+                data: r.data as never,
                 row_hash: r.row_hash,
                 updated_at: new Date().toISOString(),
               }));
