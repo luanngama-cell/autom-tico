@@ -104,8 +104,8 @@ public class SyncWorker : BackgroundService
             }
         }
 
-        // Send in batches to stay under Cloudflare's 50MB request limit.
-        const int batchSize = 25;
+        // Send in batches to stay under Cloudflare's 100MB request limit and avoid 502 timeouts.
+        const int batchSize = 5;
         var totalBatches = (int)Math.Ceiling(payloadTables.Count / (double)batchSize);
         var batchIndex = 0;
 
