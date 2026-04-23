@@ -104,15 +104,35 @@ public class SyncWorker : BackgroundService
             }
         }
 
-        var payload = new
+        // Send in batches to stay under Cloudflare's 50MB request limit.
+        const int batchSize = 25;
+        var totalBatches = (int)Math.Ceiling(payloadTables.Count / (double)batchSize);
+        var batchIndex = 0;
+
+        for (int i = 0; i < payloadTables.Count; i += batchSize)
         {
-            connection = new { status = "online" },
-            tables = payloadTables,
-        };
+            batchIndex++;
+            var chunk = payloadTables.GetRange(i, Math.Min(batchSize, payloadTables.Count - i));
 
-        await _cloud.IngestAsync(payload, ct);
+            var payload = new
+            {
+                connection = new { status = "online" },
+                batch = new { index = batchIndex, total = totalBatches },
+                tables = chunk,
+            };
 
-        _log.LogInformation("Cycle done in {Ms}ms ({Count} tables)",
-            (DateTime.UtcNow - started).TotalMilliseconds, payloadTables.Count);
+            _log.LogInformation("Sending batch {Index}/{Total} ({Count} tables)",
+                batchIndex, totalBatches, chunk.Count);
+
+            var ok = await _cloud.IngestAsync(payload, ct);
+            if (!ok)
+            {
+                _log.LogError("Batch {Index}/{Total} failed, aborting cycle", batchIndex, totalBatches);
+                break;
+            }
+        }
+
+        _log.LogInformation("Cycle done in {Ms}ms ({Count} tables in {Batches} batches)",
+            (DateTime.UtcNow - started).TotalMilliseconds, payloadTables.Count, totalBatches);
     }
 }
