@@ -1,6 +1,9 @@
 # SQL Sync Agent (Windows)
 
-Worker Service em .NET 8 que lê tabelas de um SQL Server local e sincroniza com a nuvem (Lovable Cloud) a cada 1 minuto.
+Worker Service em .NET 8. Faz **dois trabalhos** independentes:
+
+1. **SyncWorker** — sincroniza tabelas SQL Server → Lovable Cloud (`/api/public/agent/ingest`).
+2. **BiPushWorker** — executa o script `extrair-pmedico_19.sql` periodicamente e envia o JSON resultante para `/api/public/bi/push`. O endpoint deduplica por hash, então rodar "à toa" não envia bytes desnecessários.
 
 ## Pré-requisitos
 
@@ -17,21 +20,19 @@ dotnet publish -c Release -r win-x64 --self-contained true `
   -o C:\sqlsync-agent
 ```
 
-Copie/edite `C:\sqlsync-agent\appsettings.json` antes de iniciar.
-
 ## Configuração (`appsettings.json`)
 
 ```json
 {
   "Cloud": {
-    "BaseUrl": "https://seu-projeto.lovable.app",
+    "BaseUrl": "https://automaocaobd.lovable.app",
     "AgentSecret": "<AGENT_INGEST_SECRET>",
     "Token": "<connectionId>.<rawToken>"
   },
   "Sql": {
-    "Host": "192.168.1.10",
+    "Host": "127.0.0.1",
     "Port": 1433,
-    "Database": "MeuBanco",
+    "Database": "MyDatabase",
     "AuthMode": "Sql",
     "Username": "sa",
     "Password": "***",
@@ -41,48 +42,62 @@ Copie/edite `C:\sqlsync-agent\appsettings.json` antes de iniciar.
   "Sync": {
     "IntervalSeconds": 60,
     "Schema": "dbo",
-    "MaxRowsPerTablePerCycle": 5000
+    "MaxRowsPerTablePerCycle": 5000,
+    "ExcludedTables": []
+  },
+  "Bi": {
+    "Enabled": true,
+    "ScriptPath": "C:\\sqlsync\\extrair-pmedico_19.sql",
+    "IntervalSeconds": 300,
+    "CommandTimeoutSeconds": 600,
+    "PushPath": "api/public/bi/push"
   }
 }
 ```
 
-`AuthMode`:
-- `Sql` — usa `Username` + `Password`
-- `Windows` — usa a conta do serviço Windows (Integrated Security)
+### Convenções para o script BI
 
-## Instalar como Windows Service
+O `BiScriptRunner` aceita 3 formas:
+
+1. **Script já retorna JSON completo** (ex.: `SELECT (... FOR JSON PATH) AS json`):
+   é detectado automaticamente — o conteúdo vira o snapshot direto.
+
+2. **Múltiplos resultsets nomeados**: cada `SELECT` vira uma "section". Use a
+   coluna `__section` para nomear:
+   ```sql
+   SELECT 'kpis' AS __section, COUNT(*) AS pacientes, SUM(valor) AS receita FROM ...;
+   SELECT 'agenda' AS __section, * FROM v_agenda;
+   ```
+   Resultado: `{ generated_at, source, sections: { kpis: {...}, agenda: [...] } }`.
+
+3. **Sem `__section`**: cada resultset vira `section_1`, `section_2`, etc.
+
+Linhas únicas viram objeto; múltiplas viram array. `DateTime` é serializado em ISO-8601, `byte[]` em base64.
+
+## Instalação como serviço Windows
 
 ```powershell
 sc.exe create SqlSyncAgent binPath= "C:\sqlsync-agent\SqlSyncAgent.exe" start= auto
-sc.exe description SqlSyncAgent "SQL Server -> Lovable Cloud sync agent"
 sc.exe start SqlSyncAgent
 ```
 
-Para rodar com Windows Authentication, configure a conta do serviço:
+Logs: `C:\sqlsync-agent\agent.log` (rolagem diária, 14 dias) + Event Viewer.
 
-```powershell
-sc.exe config SqlSyncAgent obj= "DOMINIO\usuario" password= "***"
-```
+## Push BI: como funciona o delta
 
-## Logs
+- O agente envia o JSON completo a cada `Bi.IntervalSeconds`.
+- O endpoint `/api/public/bi/push` calcula `sha256(payload)` + sha256 por seção.
+- Se igual ao último `bi_snapshots.payload_hash`: registra `skipped` em `bi_deliveries` e **não** repassa pro destino BI.
+- Se mudou: faz `POST` pro `endpoint_url` de cada destino habilitado, atualiza snapshot e loga.
+- Falhas não atualizam o snapshot (permitem retry no próximo ciclo).
 
-```powershell
-Get-EventLog -LogName Application -Source SqlSyncAgent -Newest 50
-# ou: arquivo agent.log ao lado do executável
-```
+## Endpoints disponíveis no Cloud
 
-## Como funciona
+| Rota | Método | Uso |
+|------|--------|-----|
+| `/api/public/agent/manifest` | GET | manifest de tabelas (last_checksum) |
+| `/api/public/agent/ingest` | POST | sync de tabelas SQL Server |
+| `/api/public/bi/push` | POST | push do snapshot do script BI |
+| `/api/public/bi/snapshot` | GET | leitura do último snapshot (BI consome) |
 
-1. A cada `IntervalSeconds`, o agente:
-   - Consulta `INFORMATION_SCHEMA` para listar tabelas do schema configurado.
-   - Detecta `rowversion` em cada tabela.
-   - **Tabelas com rowversion**: lê apenas linhas com `[rowversion] > @ultimo_checksum`.
-   - **Tabelas sem rowversion**: lê todas as linhas, calcula SHA-256 por linha e envia em modo `full_replace` (a nuvem deduplica via `row_hash`).
-2. POST para `/api/public/agent/ingest` com Bearer token + header `X-Agent-Secret`.
-3. Atualiza `last_checksum` e marca `last_synced_at` na nuvem.
-
-## Segurança
-
-- Senha do SQL nunca sai do servidor — só os dados das tabelas.
-- Token do agente é hash SHA-256 do lado da nuvem; o valor original existe apenas no `appsettings.json`.
-- Comunicação via HTTPS.
+Auth: `Authorization: Bearer <id>.<token>` + `X-Agent-Secret: <segredo>` (este último só no agente).

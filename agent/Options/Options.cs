@@ -28,3 +28,17 @@ public class SyncOptions
     public int MaxRowsPerTablePerCycle { get; set; } = 5000;
     public List<string> ExcludedTables { get; set; } = new();
 }
+
+public class BiOptions
+{
+    /// <summary>Habilita execução periódica do script BI e push do snapshot.</summary>
+    public bool Enabled { get; set; } = false;
+    /// <summary>Caminho absoluto do arquivo .sql a ser executado.</summary>
+    public string ScriptPath { get; set; } = "";
+    /// <summary>Intervalo entre execuções do script BI (segundos).</summary>
+    public int IntervalSeconds { get; set; } = 300;
+    /// <summary>Timeout do comando SQL (segundos).</summary>
+    public int CommandTimeoutSeconds { get; set; } = 600;
+    /// <summary>Path da rota de push (default /api/public/bi/push).</summary>
+    public string PushPath { get; set; } = "api/public/bi/push";
+}

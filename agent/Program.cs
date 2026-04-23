@@ -31,17 +31,20 @@ builder.Logging.AddSerilog(Log.Logger);
 builder.Services.Configure<CloudOptions>(builder.Configuration.GetSection("Cloud"));
 builder.Services.Configure<SqlOptions>(builder.Configuration.GetSection("Sql"));
 builder.Services.Configure<SyncOptions>(builder.Configuration.GetSection("Sync"));
+builder.Services.Configure<BiOptions>(builder.Configuration.GetSection("Bi"));
 
 builder.Services.AddHttpClient("cloud", (sp, client) =>
 {
     var cloud = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<CloudOptions>>().Value;
     client.BaseAddress = new Uri(cloud.BaseUrl.TrimEnd('/') + "/");
-    client.Timeout = TimeSpan.FromMinutes(2);
+    client.Timeout = TimeSpan.FromMinutes(5);
 });
 
 builder.Services.AddSingleton<SqlReader>();
 builder.Services.AddSingleton<CloudClient>();
+builder.Services.AddSingleton<BiScriptRunner>();
 builder.Services.AddHostedService<SyncWorker>();
+builder.Services.AddHostedService<BiPushWorker>();
 
 var host = builder.Build();
 host.Run();
