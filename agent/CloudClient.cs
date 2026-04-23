@@ -54,4 +54,23 @@ public class CloudClient
         _log.LogInformation("Ingest ok: {Body}", body);
         return true;
     }
+
+    public async Task<bool> PushBiSnapshotAsync(string path, JsonDocument snapshot, CancellationToken ct)
+    {
+        using var c = Client();
+        using var content = new StringContent(snapshot.RootElement.GetRawText(),
+            Encoding.UTF8, "application/json");
+        c.DefaultRequestHeaders.Remove("X-Triggered-By");
+        c.DefaultRequestHeaders.Add("X-Triggered-By", "agent-script");
+
+        using var res = await c.PostAsync(path, content, ct);
+        var body = await res.Content.ReadAsStringAsync(ct);
+        if (!res.IsSuccessStatusCode)
+        {
+            _log.LogError("BI push failed {Status}: {Body}", (int)res.StatusCode, body);
+            return false;
+        }
+        _log.LogInformation("BI push ok: {Body}", body);
+        return true;
+    }
 }
