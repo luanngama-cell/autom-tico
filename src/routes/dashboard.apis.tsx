@@ -11,7 +11,9 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, Plus } from "lucide-react";
+import { BiDestinationsPanel } from "@/components/BiDestinationsPanel";
 
 export const Route = createFileRoute("/dashboard/apis")({
   component: ApisPage,
@@ -28,6 +30,34 @@ type Api = {
 };
 
 function ApisPage() {
+  return (
+    <div className="p-8">
+      <div>
+        <h2 className="text-3xl font-bold tracking-tight">APIs customizadas</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Endpoints REST e destinos BI para sistemas externos.
+        </p>
+      </div>
+
+      <Tabs defaultValue="bi" className="mt-6">
+        <TabsList>
+          <TabsTrigger value="bi">Destinos BI</TabsTrigger>
+          <TabsTrigger value="custom">APIs sob medida</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="bi" className="mt-6">
+          <BiDestinationsPanel />
+        </TabsContent>
+
+        <TabsContent value="custom" className="mt-6">
+          <CustomApisList />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function CustomApisList() {
   const [rows, setRows] = useState<Api[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -43,21 +73,18 @@ function ApisPage() {
   }, []);
 
   return (
-    <div className="p-8">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">APIs customizadas</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Endpoints REST construídos sobre as tabelas sincronizadas.
-          </p>
-        </div>
+        <p className="text-sm text-muted-foreground">
+          Endpoints REST construídos sobre as tabelas sincronizadas.
+        </p>
         <Button disabled>
           <Plus className="mr-2 h-4 w-4" />
           Nova API (em breve)
         </Button>
       </div>
 
-      <div className="mt-6 rounded-lg border bg-card">
+      <div className="rounded-lg border bg-card">
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
