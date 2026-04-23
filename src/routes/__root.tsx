@@ -31,14 +31,18 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
+      { title: "Automação BD" },
+      { name: "description", content: "Synchronizes SQL Server data to Supabase and generates custom APIs from Supabase data." },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { property: "og:title", content: "Automação BD" },
+      { property: "og:description", content: "Synchronizes SQL Server data to Supabase and generates custom APIs from Supabase data." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Automação BD" },
+      { name: "twitter:description", content: "Synchronizes SQL Server data to Supabase and generates custom APIs from Supabase data." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8fc477ee-69f0-4b5e-942e-3c4d10ddbfe3/id-preview-ba95e422--28fbbdcf-d2ef-40f3-b1b1-7d251a143256.lovable.app-1776909987895.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8fc477ee-69f0-4b5e-942e-3c4d10ddbfe3/id-preview-ba95e422--28fbbdcf-d2ef-40f3-b1b1-7d251a143256.lovable.app-1776909987895.png" },
     ],
     links: [
       {
