@@ -1,4 +1,3 @@
-import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -37,10 +36,6 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
-
-export const Route = createFileRoute("/dashboard/bi")({
-  component: BiPage,
-});
 
 type Destination = {
   id: string;
