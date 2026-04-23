@@ -12,6 +12,11 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DashboardTablesRouteImport } from './routes/dashboard.tables'
+import { Route as DashboardSettingsRouteImport } from './routes/dashboard.settings'
+import { Route as DashboardLogsRouteImport } from './routes/dashboard.logs'
+import { Route as DashboardConnectionsRouteImport } from './routes/dashboard.connections'
+import { Route as DashboardApisRouteImport } from './routes/dashboard.apis'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -28,34 +33,99 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DashboardTablesRoute = DashboardTablesRouteImport.update({
+  id: '/tables',
+  path: '/tables',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardSettingsRoute = DashboardSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardLogsRoute = DashboardLogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardConnectionsRoute = DashboardConnectionsRouteImport.update({
+  id: '/connections',
+  path: '/connections',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardApisRoute = DashboardApisRouteImport.update({
+  id: '/apis',
+  path: '/apis',
+  getParentRoute: () => DashboardRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/dashboard': typeof DashboardRoute
+  '/dashboard': typeof DashboardRouteWithChildren
   '/login': typeof LoginRoute
+  '/dashboard/apis': typeof DashboardApisRoute
+  '/dashboard/connections': typeof DashboardConnectionsRoute
+  '/dashboard/logs': typeof DashboardLogsRoute
+  '/dashboard/settings': typeof DashboardSettingsRoute
+  '/dashboard/tables': typeof DashboardTablesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/dashboard': typeof DashboardRoute
+  '/dashboard': typeof DashboardRouteWithChildren
   '/login': typeof LoginRoute
+  '/dashboard/apis': typeof DashboardApisRoute
+  '/dashboard/connections': typeof DashboardConnectionsRoute
+  '/dashboard/logs': typeof DashboardLogsRoute
+  '/dashboard/settings': typeof DashboardSettingsRoute
+  '/dashboard/tables': typeof DashboardTablesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/dashboard': typeof DashboardRoute
+  '/dashboard': typeof DashboardRouteWithChildren
   '/login': typeof LoginRoute
+  '/dashboard/apis': typeof DashboardApisRoute
+  '/dashboard/connections': typeof DashboardConnectionsRoute
+  '/dashboard/logs': typeof DashboardLogsRoute
+  '/dashboard/settings': typeof DashboardSettingsRoute
+  '/dashboard/tables': typeof DashboardTablesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/dashboard' | '/login'
+  fullPaths:
+    | '/'
+    | '/dashboard'
+    | '/login'
+    | '/dashboard/apis'
+    | '/dashboard/connections'
+    | '/dashboard/logs'
+    | '/dashboard/settings'
+    | '/dashboard/tables'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/dashboard' | '/login'
-  id: '__root__' | '/' | '/dashboard' | '/login'
+  to:
+    | '/'
+    | '/dashboard'
+    | '/login'
+    | '/dashboard/apis'
+    | '/dashboard/connections'
+    | '/dashboard/logs'
+    | '/dashboard/settings'
+    | '/dashboard/tables'
+  id:
+    | '__root__'
+    | '/'
+    | '/dashboard'
+    | '/login'
+    | '/dashboard/apis'
+    | '/dashboard/connections'
+    | '/dashboard/logs'
+    | '/dashboard/settings'
+    | '/dashboard/tables'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  DashboardRoute: typeof DashboardRoute
+  DashboardRoute: typeof DashboardRouteWithChildren
   LoginRoute: typeof LoginRoute
 }
 
@@ -82,12 +152,67 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/dashboard/tables': {
+      id: '/dashboard/tables'
+      path: '/tables'
+      fullPath: '/dashboard/tables'
+      preLoaderRoute: typeof DashboardTablesRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/settings': {
+      id: '/dashboard/settings'
+      path: '/settings'
+      fullPath: '/dashboard/settings'
+      preLoaderRoute: typeof DashboardSettingsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/logs': {
+      id: '/dashboard/logs'
+      path: '/logs'
+      fullPath: '/dashboard/logs'
+      preLoaderRoute: typeof DashboardLogsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/connections': {
+      id: '/dashboard/connections'
+      path: '/connections'
+      fullPath: '/dashboard/connections'
+      preLoaderRoute: typeof DashboardConnectionsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/apis': {
+      id: '/dashboard/apis'
+      path: '/apis'
+      fullPath: '/dashboard/apis'
+      preLoaderRoute: typeof DashboardApisRouteImport
+      parentRoute: typeof DashboardRoute
+    }
   }
 }
 
+interface DashboardRouteChildren {
+  DashboardApisRoute: typeof DashboardApisRoute
+  DashboardConnectionsRoute: typeof DashboardConnectionsRoute
+  DashboardLogsRoute: typeof DashboardLogsRoute
+  DashboardSettingsRoute: typeof DashboardSettingsRoute
+  DashboardTablesRoute: typeof DashboardTablesRoute
+}
+
+const DashboardRouteChildren: DashboardRouteChildren = {
+  DashboardApisRoute: DashboardApisRoute,
+  DashboardConnectionsRoute: DashboardConnectionsRoute,
+  DashboardLogsRoute: DashboardLogsRoute,
+  DashboardSettingsRoute: DashboardSettingsRoute,
+  DashboardTablesRoute: DashboardTablesRoute,
+}
+
+const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
+  DashboardRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  DashboardRoute: DashboardRoute,
+  DashboardRoute: DashboardRouteWithChildren,
   LoginRoute: LoginRoute,
 }
 export const routeTree = rootRouteImport
