@@ -16,6 +16,7 @@ import { Route as DashboardTablesRouteImport } from './routes/dashboard.tables'
 import { Route as DashboardSettingsRouteImport } from './routes/dashboard.settings'
 import { Route as DashboardLogsRouteImport } from './routes/dashboard.logs'
 import { Route as DashboardConnectionsRouteImport } from './routes/dashboard.connections'
+import { Route as DashboardBiRouteImport } from './routes/dashboard.bi'
 import { Route as DashboardApisRouteImport } from './routes/dashboard.apis'
 import { Route as DashboardAgentRouteImport } from './routes/dashboard.agent'
 import { Route as ApiPublicAgentManifestRouteImport } from './routes/api.public.agent.manifest'
@@ -56,6 +57,11 @@ const DashboardConnectionsRoute = DashboardConnectionsRouteImport.update({
   path: '/connections',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardBiRoute = DashboardBiRouteImport.update({
+  id: '/bi',
+  path: '/bi',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardApisRoute = DashboardApisRouteImport.update({
   id: '/apis',
   path: '/apis',
@@ -83,6 +89,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/dashboard/agent': typeof DashboardAgentRoute
   '/dashboard/apis': typeof DashboardApisRoute
+  '/dashboard/bi': typeof DashboardBiRoute
   '/dashboard/connections': typeof DashboardConnectionsRoute
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/settings': typeof DashboardSettingsRoute
@@ -96,6 +103,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/dashboard/agent': typeof DashboardAgentRoute
   '/dashboard/apis': typeof DashboardApisRoute
+  '/dashboard/bi': typeof DashboardBiRoute
   '/dashboard/connections': typeof DashboardConnectionsRoute
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/settings': typeof DashboardSettingsRoute
@@ -110,6 +118,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/dashboard/agent': typeof DashboardAgentRoute
   '/dashboard/apis': typeof DashboardApisRoute
+  '/dashboard/bi': typeof DashboardBiRoute
   '/dashboard/connections': typeof DashboardConnectionsRoute
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/settings': typeof DashboardSettingsRoute
@@ -125,6 +134,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/dashboard/agent'
     | '/dashboard/apis'
+    | '/dashboard/bi'
     | '/dashboard/connections'
     | '/dashboard/logs'
     | '/dashboard/settings'
@@ -138,6 +148,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/dashboard/agent'
     | '/dashboard/apis'
+    | '/dashboard/bi'
     | '/dashboard/connections'
     | '/dashboard/logs'
     | '/dashboard/settings'
@@ -151,6 +162,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/dashboard/agent'
     | '/dashboard/apis'
+    | '/dashboard/bi'
     | '/dashboard/connections'
     | '/dashboard/logs'
     | '/dashboard/settings'
@@ -218,6 +230,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardConnectionsRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/bi': {
+      id: '/dashboard/bi'
+      path: '/bi'
+      fullPath: '/dashboard/bi'
+      preLoaderRoute: typeof DashboardBiRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/apis': {
       id: '/dashboard/apis'
       path: '/apis'
@@ -252,6 +271,7 @@ declare module '@tanstack/react-router' {
 interface DashboardRouteChildren {
   DashboardAgentRoute: typeof DashboardAgentRoute
   DashboardApisRoute: typeof DashboardApisRoute
+  DashboardBiRoute: typeof DashboardBiRoute
   DashboardConnectionsRoute: typeof DashboardConnectionsRoute
   DashboardLogsRoute: typeof DashboardLogsRoute
   DashboardSettingsRoute: typeof DashboardSettingsRoute
@@ -261,6 +281,7 @@ interface DashboardRouteChildren {
 const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardAgentRoute: DashboardAgentRoute,
   DashboardApisRoute: DashboardApisRoute,
+  DashboardBiRoute: DashboardBiRoute,
   DashboardConnectionsRoute: DashboardConnectionsRoute,
   DashboardLogsRoute: DashboardLogsRoute,
   DashboardSettingsRoute: DashboardSettingsRoute,

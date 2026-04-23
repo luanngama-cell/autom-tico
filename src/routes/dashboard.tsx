@@ -10,6 +10,7 @@ import {
   Settings,
   LogOut,
   Server,
+  Webhook,
   CheckCircle2,
   AlertCircle,
   Activity,
@@ -33,6 +34,7 @@ const nav = [
   { to: "/dashboard/agent", label: "Agente Windows", icon: Server },
   { to: "/dashboard/tables", label: "Tabelas sincronizadas", icon: Database },
   { to: "/dashboard/apis", label: "APIs customizadas", icon: FileCode2 },
+  { to: "/dashboard/bi", label: "Destinos BI", icon: Webhook },
   { to: "/dashboard/logs", label: "Logs", icon: ScrollText },
   { to: "/dashboard/settings", label: "Configurações", icon: Settings },
 ];
