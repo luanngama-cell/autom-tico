@@ -35,8 +35,8 @@ const TableSchema = z.object({
   has_rowversion: z.boolean(),
   strategy: z.enum(["full_scan", "rowversion"]),
   row_count: z.number().int().min(0),
-  last_checksum: z.string().max(64).optional(),
-  schema_hash: z.string().max(128).optional(),
+  last_checksum: z.string().max(64).nullable().optional(),
+  schema_hash: z.string().max(128).nullable().optional(),
   upserts: z
     .array(
       z.object({
