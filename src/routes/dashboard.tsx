@@ -113,7 +113,6 @@ function DashboardLayout() {
   );
 }
 
-function Overview() {
 type OverviewData = Awaited<ReturnType<typeof getOverviewStats>>;
 
 function Overview() {
