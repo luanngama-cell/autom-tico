@@ -19,6 +19,7 @@ import { Route as DashboardConnectionsRouteImport } from './routes/dashboard.con
 import { Route as DashboardBiRouteImport } from './routes/dashboard.bi'
 import { Route as DashboardApisRouteImport } from './routes/dashboard.apis'
 import { Route as DashboardAgentRouteImport } from './routes/dashboard.agent'
+import { Route as ApiPublicBiSnapshotRouteImport } from './routes/api.public.bi.snapshot'
 import { Route as ApiPublicBiPushRouteImport } from './routes/api.public.bi.push'
 import { Route as ApiPublicAgentManifestRouteImport } from './routes/api.public.agent.manifest'
 import { Route as ApiPublicAgentIngestRouteImport } from './routes/api.public.agent.ingest'
@@ -73,6 +74,11 @@ const DashboardAgentRoute = DashboardAgentRouteImport.update({
   path: '/agent',
   getParentRoute: () => DashboardRoute,
 } as any)
+const ApiPublicBiSnapshotRoute = ApiPublicBiSnapshotRouteImport.update({
+  id: '/api/public/bi/snapshot',
+  path: '/api/public/bi/snapshot',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicBiPushRoute = ApiPublicBiPushRouteImport.update({
   id: '/api/public/bi/push',
   path: '/api/public/bi/push',
@@ -103,6 +109,7 @@ export interface FileRoutesByFullPath {
   '/api/public/agent/ingest': typeof ApiPublicAgentIngestRoute
   '/api/public/agent/manifest': typeof ApiPublicAgentManifestRoute
   '/api/public/bi/push': typeof ApiPublicBiPushRoute
+  '/api/public/bi/snapshot': typeof ApiPublicBiSnapshotRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -118,6 +125,7 @@ export interface FileRoutesByTo {
   '/api/public/agent/ingest': typeof ApiPublicAgentIngestRoute
   '/api/public/agent/manifest': typeof ApiPublicAgentManifestRoute
   '/api/public/bi/push': typeof ApiPublicBiPushRoute
+  '/api/public/bi/snapshot': typeof ApiPublicBiSnapshotRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -134,6 +142,7 @@ export interface FileRoutesById {
   '/api/public/agent/ingest': typeof ApiPublicAgentIngestRoute
   '/api/public/agent/manifest': typeof ApiPublicAgentManifestRoute
   '/api/public/bi/push': typeof ApiPublicBiPushRoute
+  '/api/public/bi/snapshot': typeof ApiPublicBiSnapshotRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -151,6 +160,7 @@ export interface FileRouteTypes {
     | '/api/public/agent/ingest'
     | '/api/public/agent/manifest'
     | '/api/public/bi/push'
+    | '/api/public/bi/snapshot'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -166,6 +176,7 @@ export interface FileRouteTypes {
     | '/api/public/agent/ingest'
     | '/api/public/agent/manifest'
     | '/api/public/bi/push'
+    | '/api/public/bi/snapshot'
   id:
     | '__root__'
     | '/'
@@ -181,6 +192,7 @@ export interface FileRouteTypes {
     | '/api/public/agent/ingest'
     | '/api/public/agent/manifest'
     | '/api/public/bi/push'
+    | '/api/public/bi/snapshot'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -190,6 +202,7 @@ export interface RootRouteChildren {
   ApiPublicAgentIngestRoute: typeof ApiPublicAgentIngestRoute
   ApiPublicAgentManifestRoute: typeof ApiPublicAgentManifestRoute
   ApiPublicBiPushRoute: typeof ApiPublicBiPushRoute
+  ApiPublicBiSnapshotRoute: typeof ApiPublicBiSnapshotRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -264,6 +277,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardAgentRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/api/public/bi/snapshot': {
+      id: '/api/public/bi/snapshot'
+      path: '/api/public/bi/snapshot'
+      fullPath: '/api/public/bi/snapshot'
+      preLoaderRoute: typeof ApiPublicBiSnapshotRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/bi/push': {
       id: '/api/public/bi/push'
       path: '/api/public/bi/push'
@@ -319,6 +339,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicAgentIngestRoute: ApiPublicAgentIngestRoute,
   ApiPublicAgentManifestRoute: ApiPublicAgentManifestRoute,
   ApiPublicBiPushRoute: ApiPublicBiPushRoute,
+  ApiPublicBiSnapshotRoute: ApiPublicBiSnapshotRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
