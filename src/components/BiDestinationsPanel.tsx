@@ -77,7 +77,7 @@ type Delivery = {
   created_at: string;
 };
 
-function BiPage() {
+export function BiDestinationsPanel() {
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [tokens, setTokens] = useState<Token[]>([]);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
@@ -109,12 +109,12 @@ function BiPage() {
   const selectedDeliveries = deliveries.filter((d) => d.destination_id === selected);
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Destinos BI</h2>
+          <h3 className="text-xl font-semibold tracking-tight">Destinos BI</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Webhooks para enviar snapshots JSON a sistemas externos (BI Hospital CMO, etc).
+            Endpoints para sistemas externos (ex: BI Hospital CMO) consumirem o snapshot.
           </p>
         </div>
         <div className="flex gap-2">
