@@ -1,7 +1,7 @@
 import { createFileRoute, Navigate, Link, Outlet, useLocation } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
-import { Loader2, Database, Network, FileCode2, ScrollText, Settings, LogOut } from "lucide-react";
+import { Loader2, Database, Network, FileCode2, ScrollText, Settings, LogOut, Server } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/dashboard")({
@@ -11,6 +11,7 @@ export const Route = createFileRoute("/dashboard")({
 const nav = [
   { to: "/dashboard", label: "Visão geral", icon: Network, exact: true },
   { to: "/dashboard/connections", label: "Conexões SQL", icon: Database },
+  { to: "/dashboard/agent", label: "Agente Windows", icon: Server },
   { to: "/dashboard/tables", label: "Tabelas sincronizadas", icon: Database },
   { to: "/dashboard/apis", label: "APIs customizadas", icon: FileCode2 },
   { to: "/dashboard/logs", label: "Logs", icon: ScrollText },
