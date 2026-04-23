@@ -88,7 +88,7 @@ public class SyncWorker : BackgroundService
                     has_rowversion = t.HasRowVersion,
                     strategy = snap.Strategy,
                     row_count = snap.RowCount,
-                    last_checksum = snap.LastChecksum,
+                    last_checksum = snap.LastChecksum ?? string.Empty,
                     upserts = snap.Upserts.Select(u => new
                     {
                         pk = u.Pk,
