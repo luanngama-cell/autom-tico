@@ -17,6 +17,7 @@ import { Route as DashboardSettingsRouteImport } from './routes/dashboard.settin
 import { Route as DashboardLogsRouteImport } from './routes/dashboard.logs'
 import { Route as DashboardConnectionsRouteImport } from './routes/dashboard.connections'
 import { Route as DashboardApisRouteImport } from './routes/dashboard.apis'
+import { Route as DashboardAgentRouteImport } from './routes/dashboard.agent'
 import { Route as ApiPublicAgentManifestRouteImport } from './routes/api.public.agent.manifest'
 import { Route as ApiPublicAgentIngestRouteImport } from './routes/api.public.agent.ingest'
 
@@ -60,6 +61,11 @@ const DashboardApisRoute = DashboardApisRouteImport.update({
   path: '/apis',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardAgentRoute = DashboardAgentRouteImport.update({
+  id: '/agent',
+  path: '/agent',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const ApiPublicAgentManifestRoute = ApiPublicAgentManifestRouteImport.update({
   id: '/api/public/agent/manifest',
   path: '/api/public/agent/manifest',
@@ -75,6 +81,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRouteWithChildren
   '/login': typeof LoginRoute
+  '/dashboard/agent': typeof DashboardAgentRoute
   '/dashboard/apis': typeof DashboardApisRoute
   '/dashboard/connections': typeof DashboardConnectionsRoute
   '/dashboard/logs': typeof DashboardLogsRoute
@@ -87,6 +94,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRouteWithChildren
   '/login': typeof LoginRoute
+  '/dashboard/agent': typeof DashboardAgentRoute
   '/dashboard/apis': typeof DashboardApisRoute
   '/dashboard/connections': typeof DashboardConnectionsRoute
   '/dashboard/logs': typeof DashboardLogsRoute
@@ -100,6 +108,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRouteWithChildren
   '/login': typeof LoginRoute
+  '/dashboard/agent': typeof DashboardAgentRoute
   '/dashboard/apis': typeof DashboardApisRoute
   '/dashboard/connections': typeof DashboardConnectionsRoute
   '/dashboard/logs': typeof DashboardLogsRoute
@@ -114,6 +123,7 @@ export interface FileRouteTypes {
     | '/'
     | '/dashboard'
     | '/login'
+    | '/dashboard/agent'
     | '/dashboard/apis'
     | '/dashboard/connections'
     | '/dashboard/logs'
@@ -126,6 +136,7 @@ export interface FileRouteTypes {
     | '/'
     | '/dashboard'
     | '/login'
+    | '/dashboard/agent'
     | '/dashboard/apis'
     | '/dashboard/connections'
     | '/dashboard/logs'
@@ -138,6 +149,7 @@ export interface FileRouteTypes {
     | '/'
     | '/dashboard'
     | '/login'
+    | '/dashboard/agent'
     | '/dashboard/apis'
     | '/dashboard/connections'
     | '/dashboard/logs'
@@ -213,6 +225,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardApisRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/agent': {
+      id: '/dashboard/agent'
+      path: '/agent'
+      fullPath: '/dashboard/agent'
+      preLoaderRoute: typeof DashboardAgentRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/api/public/agent/manifest': {
       id: '/api/public/agent/manifest'
       path: '/api/public/agent/manifest'
@@ -231,6 +250,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface DashboardRouteChildren {
+  DashboardAgentRoute: typeof DashboardAgentRoute
   DashboardApisRoute: typeof DashboardApisRoute
   DashboardConnectionsRoute: typeof DashboardConnectionsRoute
   DashboardLogsRoute: typeof DashboardLogsRoute
@@ -239,6 +259,7 @@ interface DashboardRouteChildren {
 }
 
 const DashboardRouteChildren: DashboardRouteChildren = {
+  DashboardAgentRoute: DashboardAgentRoute,
   DashboardApisRoute: DashboardApisRoute,
   DashboardConnectionsRoute: DashboardConnectionsRoute,
   DashboardLogsRoute: DashboardLogsRoute,
