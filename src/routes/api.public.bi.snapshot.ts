@@ -54,15 +54,26 @@ export const Route = createFileRoute("/api/public/bi/snapshot")({
     handlers: {
       OPTIONS: async () => new Response(null, { status: 204, headers: corsHeaders }),
       GET: async ({ request }) => {
+        const reqIp = getClientIp(request);
+        const ua = request.headers.get("user-agent") ?? "";
+        const url = new URL(request.url);
+        console.log(
+          `[bi-snapshot] GET hit url=${url.pathname}${url.search} ip=${reqIp} ua=${ua.slice(0, 80)}`
+        );
         try {
           const auth = request.headers.get("authorization") ?? "";
           const bearer = auth.replace(/^Bearer\s+/i, "");
-          if (!bearer) return json({ error: "Missing token" }, 401);
+          if (!bearer) {
+            console.log("[bi-snapshot] reject: missing token");
+            return json({ error: "Missing token" }, 401);
+          }
 
           const [destinationId, rawToken] = bearer.split(".");
           if (!destinationId || !rawToken) {
+            console.log("[bi-snapshot] reject: invalid token format");
             return json({ error: "Invalid token format" }, 401);
           }
+          console.log(`[bi-snapshot] auth attempt destination=${destinationId}`);
 
           const tokenHash = sha256Hex(rawToken);
 
