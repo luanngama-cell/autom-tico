@@ -21,7 +21,8 @@ public record TableSnapshot(
     long RowCount,
     string? LastChecksum,      // hex of MAX(rowversion) for incremental
     List<UpsertRow> Upserts,
-    bool FullReplace);
+    bool FullReplace,
+    List<Dictionary<string, object?>> AllPks);  // ALL live PKs in source (for reconciliation)
 
 public record UpsertRow(
     Dictionary<string, object?> Pk,
@@ -193,16 +194,21 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn))
         var sql = $"SELECT TOP ({top}) *, [{rvCol}] AS __rv FROM [{table.SchemaName}].[{table.TableName}] " +
                   $"WHERE [{rvCol}] > @rv ORDER BY [{rvCol}] ASC";
 
-        await using var qcmd = new SqlCommand(sql, conn) { CommandTimeout = 60 };
-        qcmd.Parameters.Add(new SqlParameter("@rv", SqlDbType.Timestamp) { Value = minRv });
-
-        await using var rd = await qcmd.ExecuteReaderAsync(ct);
-        while (await rd.ReadAsync(ct))
+        await using (var qcmd = new SqlCommand(sql, conn) { CommandTimeout = 60 })
         {
-            var (row, rv) = ReadRow(rd);
-            if (rv != null) maxRv = rv;
-            upserts.Add(BuildUpsert(table, row));
+            qcmd.Parameters.Add(new SqlParameter("@rv", SqlDbType.Timestamp) { Value = minRv });
+
+            await using var rd = await qcmd.ExecuteReaderAsync(ct);
+            while (await rd.ReadAsync(ct))
+            {
+                var (row, rv) = ReadRow(rd);
+                if (rv != null) maxRv = rv;
+                upserts.Add(BuildUpsert(table, row));
+            }
         }
+
+        // Collect ALL live PKs for reconciliation (deletes propagation).
+        var allPks = await ReadAllPksAsync(conn, table, ct);
 
         return new TableSnapshot(
             table,
@@ -210,7 +216,8 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn))
             rowCount,
             maxRv != null ? Convert.ToHexString(maxRv).ToLowerInvariant() : lastChecksum,
             upserts,
-            FullReplace: false);
+            FullReplace: false,
+            AllPks: allPks);
     }
 
     private async Task<TableSnapshot> ReadFullScanAsync(
@@ -219,14 +226,46 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn))
         var upserts = new List<UpsertRow>();
         var top = _sync.MaxRowsPerTablePerCycle;
         var sql = $"SELECT TOP ({top}) * FROM [{table.SchemaName}].[{table.TableName}]";
+        await using (var cmd = new SqlCommand(sql, conn) { CommandTimeout = 120 })
+        {
+            await using var rd = await cmd.ExecuteReaderAsync(ct);
+            while (await rd.ReadAsync(ct))
+            {
+                var (row, _) = ReadRow(rd);
+                upserts.Add(BuildUpsert(table, row));
+            }
+        }
+
+        // For full_scan tables that fit in one cycle, full_replace handles deletes.
+        // For larger ones, we still send all_pks so the server can reconcile.
+        var fullReplace = rowCount <= top;
+        var allPks = fullReplace
+            ? new List<Dictionary<string, object?>>()
+            : await ReadAllPksAsync(conn, table, ct);
+
+        return new TableSnapshot(table, "full_scan", rowCount, null, upserts, fullReplace, allPks);
+    }
+
+    private async Task<List<Dictionary<string, object?>>> ReadAllPksAsync(
+        SqlConnection conn, TableInfo table, CancellationToken ct)
+    {
+        var pks = new List<Dictionary<string, object?>>();
+        var pkCols = string.Join(", ", table.PrimaryKeys.Select(c => $"[{c}]"));
+        var sql = $"SELECT {pkCols} FROM [{table.SchemaName}].[{table.TableName}]";
         await using var cmd = new SqlCommand(sql, conn) { CommandTimeout = 120 };
         await using var rd = await cmd.ExecuteReaderAsync(ct);
         while (await rd.ReadAsync(ct))
         {
-            var (row, _) = ReadRow(rd);
-            upserts.Add(BuildUpsert(table, row));
+            var dict = new Dictionary<string, object?>(rd.FieldCount);
+            for (int i = 0; i < rd.FieldCount; i++)
+            {
+                var name = rd.GetName(i);
+                var val = rd.IsDBNull(i) ? null : rd.GetValue(i);
+                dict[name] = NormalizeValue(val);
+            }
+            pks.Add(dict);
         }
-        return new TableSnapshot(table, "full_scan", rowCount, null, upserts, FullReplace: rowCount <= top);
+        return pks;
     }
 
     private static (Dictionary<string, object?> row, byte[]? rv) ReadRow(SqlDataReader rd)

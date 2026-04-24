@@ -51,6 +51,13 @@ const TableSchema = z.object({
     .max(5000)
     .optional(),
   full_replace: z.boolean().optional(),
+  // Reconciliation: agent sends the FULL list of PKs that currently exist in source.
+  // Server deletes any synced_rows whose pk_hash is not in this set.
+  // Lightweight (PKs only, no row data) so it scales for incremental tables too.
+  all_pks: z
+    .array(z.record(z.string(), z.unknown()))
+    .max(2_000_000)
+    .optional(),
 });
 
 const IngestSchema = z.object({
@@ -246,6 +253,32 @@ export const Route = createFileRoute("/api/public/agent/ingest")({
               const toDelete = (existingRows ?? [])
                 .map((r) => r.pk_hash)
                 .filter((h) => !keepSet.has(h));
+              const chunkSize = 500;
+              for (let i = 0; i < toDelete.length; i += chunkSize) {
+                const chunk = toDelete.slice(i, i + chunkSize);
+                if (chunk.length === 0) continue;
+                await supabaseAdmin
+                  .from("synced_rows")
+                  .delete()
+                  .eq("sync_table_id", syncTableId!)
+                  .in("pk_hash", chunk);
+                deleted += chunk.length;
+              }
+            }
+
+            // Reconciliation via all_pks: cheaper than full_replace because
+            // the agent only sends PKs (not row data). Deletes ghost rows.
+            if (t.all_pks && t.all_pks.length >= 0 && !t.full_replace) {
+              const keepHashes = new Set(
+                t.all_pks.map((pk) => pkHash(connectionId, t.schema_name, t.table_name, pk))
+              );
+              const { data: existingRows } = await supabaseAdmin
+                .from("synced_rows")
+                .select("pk_hash")
+                .eq("sync_table_id", syncTableId!);
+              const toDelete = (existingRows ?? [])
+                .map((r) => r.pk_hash)
+                .filter((h) => !keepHashes.has(h));
               const chunkSize = 500;
               for (let i = 0; i < toDelete.length; i += chunkSize) {
                 const chunk = toDelete.slice(i, i + chunkSize);
