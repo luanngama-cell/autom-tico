@@ -52,6 +52,36 @@ function json(body: unknown, status = 200) {
   });
 }
 
+async function parseDeliveryResponse(res: Response): Promise<{
+  ok: boolean;
+  errorMessage: string | null;
+}> {
+  const bodyText = res.status === 204 ? "" : await res.text().catch(() => "");
+  const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
+  const trimmed = bodyText.trim().toLowerCase();
+  const looksHtml =
+    contentType.includes("text/html") ||
+    trimmed.startsWith("<!doctype html") ||
+    trimmed.startsWith("<html");
+
+  if (!res.ok) {
+    return {
+      ok: false,
+      errorMessage: `HTTP ${res.status}: ${bodyText.slice(0, 500)}`,
+    };
+  }
+
+  if (looksHtml) {
+    return {
+      ok: false,
+      errorMessage:
+        "Destination URL returned HTML instead of an API response. Configure the webhook/API endpoint, not a dashboard page.",
+    };
+  }
+
+  return { ok: true, errorMessage: null };
+}
+
 export const Route = createFileRoute("/api/public/bi/run-scripts")({
   server: {
     handlers: {
@@ -220,11 +250,9 @@ export const Route = createFileRoute("/api/public/bi/run-scripts")({
                   signal: AbortSignal.timeout(60_000),
                 });
                 httpStatus = res.status;
-                pushStatus = res.ok ? "success" : "failed";
-                if (!res.ok) {
-                  const text = await res.text().catch(() => "");
-                  pushErr = `HTTP ${res.status}: ${text.slice(0, 500)}`;
-                }
+                const delivery = await parseDeliveryResponse(res);
+                pushStatus = delivery.ok ? "success" : "failed";
+                pushErr = delivery.errorMessage;
               } catch (e) {
                 pushErr = e instanceof Error ? e.message : "fetch failed";
                 pushStatus = "failed";
