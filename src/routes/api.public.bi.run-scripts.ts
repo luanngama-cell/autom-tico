@@ -142,9 +142,7 @@ export const Route = createFileRoute("/api/public/bi/run-scripts")({
           // Destinos ligados a este script
           const { data: destinations } = await supabaseAdmin
             .from("bi_destinations")
-            // @ts-expect-error - coluna recém-adicionada não está nos types ainda
             .select("id, name, endpoint_url, enabled, allowed_ips, bi_script_id")
-            // @ts-expect-error - coluna recém-adicionada
             .eq("bi_script_id", script.id)
             .eq("enabled", true);
 
