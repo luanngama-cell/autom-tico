@@ -20,13 +20,29 @@ function sha256Hex(input: string) {
   return createHash("sha256").update(input).digest("hex");
 }
 
-function isAuthorized(request: Request): boolean {
-  const secret = request.headers.get("x-agent-secret") ?? "";
+async function isAuthorized(request: Request): Promise<boolean> {
+  // Método 1: X-Agent-Secret (para testes manuais)
+  const agentSecret = request.headers.get("x-agent-secret") ?? "";
   const expected = process.env.AGENT_INGEST_SECRET;
-  if (!secret || !expected) return false;
-  const a = Buffer.from(secret);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
+  if (agentSecret && expected) {
+    const a = Buffer.from(agentSecret);
+    const b = Buffer.from(expected);
+    if (a.length === b.length && timingSafeEqual(a, b)) return true;
+  }
+
+  // Método 2: X-Cron-Token (usado pelo pg_cron, validado no banco)
+  const cronToken = request.headers.get("x-cron-token");
+  if (cronToken) {
+    const { data } = await (
+      supabaseAdmin.rpc as unknown as (
+        fn: string,
+        args: Record<string, unknown>
+      ) => Promise<{ data: boolean | null }>
+    )("validate_bi_cron_token", { _token: cronToken });
+    if (data === true) return true;
+  }
+
+  return false;
 }
 
 function json(body: unknown, status = 200) {
@@ -40,7 +56,7 @@ export const Route = createFileRoute("/api/public/bi/run-scripts")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        if (!isAuthorized(request)) {
+        if (!(await isAuthorized(request))) {
           return json({ error: "Unauthorized" }, 401);
         }
 
