@@ -361,6 +361,28 @@ export const Route = createFileRoute("/api/public/bi/push")({
             return json({ ok: true, accepted: 0, message: "No destinations" });
           }
 
+          // CRÍTICO: persiste o snapshot SÍNCRONAMENTE antes do 202.
+          // Assim o BI consegue puxar via /api/public/bi/snapshot mesmo que
+          // o webhook de push externo falhe ou o background não execute.
+          const persistedAt = new Date().toISOString();
+          for (const dest of destinations) {
+            try {
+              await supabaseAdmin.from("bi_snapshots").upsert(
+                {
+                  destination_id: dest.id,
+                  payload: payload as never,
+                  payload_hash: payloadHash,
+                  section_hashes: sectionHashes as never,
+                  generated_at: persistedAt,
+                  updated_at: persistedAt,
+                },
+                { onConflict: "destination_id" }
+              );
+            } catch (err) {
+              console.error("bi snapshot persist error", dest.id, err);
+            }
+          }
+
           // Processa entregas em background (evita timeout do Cloudflare em payloads grandes).
           // Responde 202 Accepted imediatamente; cliente acompanha pelo bi_deliveries.
           const processInBackground = async () => {
