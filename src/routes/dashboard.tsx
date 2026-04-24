@@ -176,7 +176,7 @@ function Overview() {
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Visão geral</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Atualizado automaticamente a cada 15 segundos.
+            Atualizado automaticamente a cada 60 segundos.
           </p>
         </div>
         <Button
