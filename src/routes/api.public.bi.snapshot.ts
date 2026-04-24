@@ -144,6 +144,9 @@ export const Route = createFileRoute("/api/public/bi/snapshot")({
             });
           }
 
+          console.log(
+            `[bi-snapshot] OK 200 dest=${destinationId} hash=${snap.payload_hash?.slice(0, 12)} bytes=${JSON.stringify(snap.payload).length}`
+          );
           return json(
             {
               destination: {
