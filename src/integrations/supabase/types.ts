@@ -559,6 +559,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      validate_maintenance_token: { Args: { _token: string }; Returns: boolean }
     }
     Enums: {
       app_role: "master"
