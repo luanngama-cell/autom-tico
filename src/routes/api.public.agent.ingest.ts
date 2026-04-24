@@ -266,6 +266,32 @@ export const Route = createFileRoute("/api/public/agent/ingest")({
               }
             }
 
+            // Reconciliation via all_pks: cheaper than full_replace because
+            // the agent only sends PKs (not row data). Deletes ghost rows.
+            if (t.all_pks && t.all_pks.length >= 0 && !t.full_replace) {
+              const keepHashes = new Set(
+                t.all_pks.map((pk) => pkHash(connectionId, t.schema_name, t.table_name, pk))
+              );
+              const { data: existingRows } = await supabaseAdmin
+                .from("synced_rows")
+                .select("pk_hash")
+                .eq("sync_table_id", syncTableId!);
+              const toDelete = (existingRows ?? [])
+                .map((r) => r.pk_hash)
+                .filter((h) => !keepHashes.has(h));
+              const chunkSize = 500;
+              for (let i = 0; i < toDelete.length; i += chunkSize) {
+                const chunk = toDelete.slice(i, i + chunkSize);
+                if (chunk.length === 0) continue;
+                await supabaseAdmin
+                  .from("synced_rows")
+                  .delete()
+                  .eq("sync_table_id", syncTableId!)
+                  .in("pk_hash", chunk);
+                deleted += chunk.length;
+              }
+            }
+
             await supabaseAdmin.from("sync_logs").insert({
               connection_id: connectionId,
               sync_table_id: syncTableId!,
