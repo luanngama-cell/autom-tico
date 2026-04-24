@@ -81,7 +81,7 @@ function ApisPage() {
             </TableHeader>
             <TableBody>
               {/* Built-in BI destinations row */}
-              <>
+              <Fragment>
                 <TableRow
                   className="cursor-pointer hover:bg-muted/50"
                   onClick={() => toggle("__bi__")}
@@ -136,15 +136,14 @@ function ApisPage() {
                   <TableCell
                     colSpan={7}
                     className="py-8 text-center text-sm text-muted-foreground"
-                  >
+              </Fragment>
                     Nenhuma API customizada criada.
                   </TableCell>
                 </TableRow>
               ) : (
                 rows.map((a) => (
-                  <>
+                  <Fragment key={a.id}>
                     <TableRow
-                      key={a.id}
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => toggle(a.id)}
                     >
