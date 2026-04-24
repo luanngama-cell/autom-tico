@@ -62,6 +62,11 @@ function clearStoredAuthSession() {
   }
 }
 
+function getSessionFingerprint(session: Session | null) {
+  if (!session?.user) return null;
+  return `${session.user.id}:${session.access_token}`;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isMaster, setIsMaster] = useState(false);
@@ -70,6 +75,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [roleError, setRoleError] = useState<string | null>(null);
   const activeRoleUserIdRef = useRef<string | null>(null);
   const activeRolePromiseRef = useRef<Promise<void> | null>(null);
+  const initializedRef = useRef(false);
+  const sessionFingerprintRef = useRef<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -77,6 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const resetAuthState = () => {
       activeRoleUserIdRef.current = null;
       activeRolePromiseRef.current = null;
+      sessionFingerprintRef.current = null;
 
       if (!mounted) return;
 
@@ -147,8 +155,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return rolePromise;
     };
 
-    const handleSession = (nextSession: Session | null) => {
+    const handleSession = (nextSession: Session | null, options?: { isBootstrap?: boolean }) => {
       if (!mounted) return;
+
+      const fingerprint = getSessionFingerprint(nextSession);
+
+      if (!fingerprint && !initializedRef.current && !options?.isBootstrap) {
+        return;
+      }
+
+      if (fingerprint && sessionFingerprintRef.current === fingerprint && initializedRef.current) {
+        if (!activeRolePromiseRef.current) {
+          setLoading(false);
+        }
+        return;
+      }
+
+      sessionFingerprintRef.current = fingerprint;
 
       setSession(nextSession);
 
@@ -168,9 +191,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth
       .getSession()
       .then(({ data: { session: existing } }) => {
-        handleSession(existing);
+        initializedRef.current = true;
+        handleSession(existing, { isBootstrap: true });
       })
       .catch(() => {
+        initializedRef.current = true;
         resetAuthState();
       });
 
@@ -191,8 +216,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // ignore remote logout failures and clear local state anyway
     } finally {
+      initializedRef.current = true;
       activeRoleUserIdRef.current = null;
       activeRolePromiseRef.current = null;
+      sessionFingerprintRef.current = null;
       clearStoredAuthSession();
       setSession(null);
       setIsMaster(false);

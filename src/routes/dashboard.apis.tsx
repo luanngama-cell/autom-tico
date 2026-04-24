@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2, Plus, ChevronRight, Webhook } from "lucide-react";
 import { BiDestinationsPanel } from "@/components/BiDestinationsPanel";
+import { getBiSnapshotUrl } from "@/lib/public-base-url";
 
 export const Route = createFileRoute("/dashboard/apis")({
   component: ApisPage,
@@ -29,6 +30,9 @@ type Api = {
 };
 
 function ApisPage() {
+  const biSnapshotUrl = getBiSnapshotUrl(
+    typeof window !== "undefined" ? window.location.origin : undefined
+  );
   const [rows, setRows] = useState<Api[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -103,8 +107,8 @@ function ApisPage() {
                   <TableCell>
                     <Badge variant="outline">GET</Badge>
                   </TableCell>
-                  <TableCell className="font-mono text-xs">
-                    /api/public/bi/snapshot
+                  <TableCell className="font-mono text-[11px] leading-relaxed break-all">
+                    {biSnapshotUrl}
                   </TableCell>
                   <TableCell>
                     <Badge>Pública</Badge>
