@@ -50,6 +50,13 @@ type Destination = {
   last_pushed_at: string | null;
   last_status: string | null;
   last_error: string | null;
+  bi_script_id: string | null;
+};
+
+type ScriptOption = {
+  id: string;
+  name: string;
+  enabled: boolean;
 };
 
 type Token = {
