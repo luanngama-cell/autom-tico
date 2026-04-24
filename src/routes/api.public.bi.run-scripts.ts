@@ -86,11 +86,12 @@ export const Route = createFileRoute("/api/public/bi/run-scripts")({
           let status: "success" | "failed" = "failed";
 
           try {
-            const { data, error } = await supabaseAdmin.rpc(
-              // @ts-expect-error - função custom não está no Database types
-              "execute_bi_script",
-              { _sql: script.sql_code }
-            );
+            const { data, error } = await (
+              supabaseAdmin.rpc as unknown as (
+                fn: string,
+                args: Record<string, unknown>
+              ) => Promise<{ data: unknown; error: { message: string } | null }>
+            )("execute_bi_script", { _sql: script.sql_code });
             if (error) {
               errorMessage = error.message;
             } else {
