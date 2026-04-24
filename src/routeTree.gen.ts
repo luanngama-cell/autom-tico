@@ -16,6 +16,7 @@ import { Route as DashboardTablesRouteImport } from './routes/dashboard.tables'
 import { Route as DashboardSettingsRouteImport } from './routes/dashboard.settings'
 import { Route as DashboardLogsRouteImport } from './routes/dashboard.logs'
 import { Route as DashboardConnectionsRouteImport } from './routes/dashboard.connections'
+import { Route as DashboardBiScriptsRouteImport } from './routes/dashboard.bi-scripts'
 import { Route as DashboardApisRouteImport } from './routes/dashboard.apis'
 import { Route as DashboardAgentRouteImport } from './routes/dashboard.agent'
 import { Route as ApiPublicMaintenanceCleanupLogsRouteImport } from './routes/api.public.maintenance.cleanup-logs'
@@ -58,6 +59,11 @@ const DashboardLogsRoute = DashboardLogsRouteImport.update({
 const DashboardConnectionsRoute = DashboardConnectionsRouteImport.update({
   id: '/connections',
   path: '/connections',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardBiScriptsRoute = DashboardBiScriptsRouteImport.update({
+  id: '/bi-scripts',
+  path: '/bi-scripts',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardApisRoute = DashboardApisRouteImport.update({
@@ -108,6 +114,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/dashboard/agent': typeof DashboardAgentRoute
   '/dashboard/apis': typeof DashboardApisRoute
+  '/dashboard/bi-scripts': typeof DashboardBiScriptsRoute
   '/dashboard/connections': typeof DashboardConnectionsRoute
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/settings': typeof DashboardSettingsRoute
@@ -125,6 +132,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/dashboard/agent': typeof DashboardAgentRoute
   '/dashboard/apis': typeof DashboardApisRoute
+  '/dashboard/bi-scripts': typeof DashboardBiScriptsRoute
   '/dashboard/connections': typeof DashboardConnectionsRoute
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/settings': typeof DashboardSettingsRoute
@@ -143,6 +151,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/dashboard/agent': typeof DashboardAgentRoute
   '/dashboard/apis': typeof DashboardApisRoute
+  '/dashboard/bi-scripts': typeof DashboardBiScriptsRoute
   '/dashboard/connections': typeof DashboardConnectionsRoute
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/settings': typeof DashboardSettingsRoute
@@ -162,6 +171,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/dashboard/agent'
     | '/dashboard/apis'
+    | '/dashboard/bi-scripts'
     | '/dashboard/connections'
     | '/dashboard/logs'
     | '/dashboard/settings'
@@ -179,6 +189,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/dashboard/agent'
     | '/dashboard/apis'
+    | '/dashboard/bi-scripts'
     | '/dashboard/connections'
     | '/dashboard/logs'
     | '/dashboard/settings'
@@ -196,6 +207,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/dashboard/agent'
     | '/dashboard/apis'
+    | '/dashboard/bi-scripts'
     | '/dashboard/connections'
     | '/dashboard/logs'
     | '/dashboard/settings'
@@ -271,6 +283,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardConnectionsRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/bi-scripts': {
+      id: '/dashboard/bi-scripts'
+      path: '/bi-scripts'
+      fullPath: '/dashboard/bi-scripts'
+      preLoaderRoute: typeof DashboardBiScriptsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/apis': {
       id: '/dashboard/apis'
       path: '/apis'
@@ -333,6 +352,7 @@ declare module '@tanstack/react-router' {
 interface DashboardRouteChildren {
   DashboardAgentRoute: typeof DashboardAgentRoute
   DashboardApisRoute: typeof DashboardApisRoute
+  DashboardBiScriptsRoute: typeof DashboardBiScriptsRoute
   DashboardConnectionsRoute: typeof DashboardConnectionsRoute
   DashboardLogsRoute: typeof DashboardLogsRoute
   DashboardSettingsRoute: typeof DashboardSettingsRoute
@@ -342,6 +362,7 @@ interface DashboardRouteChildren {
 const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardAgentRoute: DashboardAgentRoute,
   DashboardApisRoute: DashboardApisRoute,
+  DashboardBiScriptsRoute: DashboardBiScriptsRoute,
   DashboardConnectionsRoute: DashboardConnectionsRoute,
   DashboardLogsRoute: DashboardLogsRoute,
   DashboardSettingsRoute: DashboardSettingsRoute,
