@@ -21,7 +21,8 @@ public record TableSnapshot(
     long RowCount,
     string? LastChecksum,      // hex of MAX(rowversion) for incremental
     List<UpsertRow> Upserts,
-    bool FullReplace);
+    bool FullReplace,
+    List<Dictionary<string, object?>> AllPks);  // ALL live PKs in source (for reconciliation)
 
 public record UpsertRow(
     Dictionary<string, object?> Pk,
