@@ -378,6 +378,11 @@ export const Route = createFileRoute("/api/public/bi/push")({
                 },
                 { onConflict: "destination_id" }
               );
+
+              await supabaseAdmin
+                .from("bi_destinations")
+                .update({ last_pushed_at: persistedAt })
+                .eq("id", dest.id);
             } catch (err) {
               console.error("bi snapshot persist error", dest.id, err);
             }
@@ -434,10 +439,34 @@ export const Route = createFileRoute("/api/public/bi/push")({
           const globalCtx = (globalThis as unknown as {
             __cf_ctx?: { waitUntil?: (p: Promise<unknown>) => void };
           }).__cf_ctx;
-          const waitUntil =
-            ctx?.waitUntil ?? globalCtx?.waitUntil ?? ((p: Promise<unknown>) => void p.catch(() => {}));
+          const waitUntil = ctx?.waitUntil ?? globalCtx?.waitUntil;
+          const backgroundScheduled = Boolean(waitUntil);
 
-          waitUntil(processInBackground());
+          if (waitUntil) {
+            waitUntil(processInBackground());
+          } else {
+            console.warn("bi push background scheduling unavailable; snapshot persisted for pull consumption only");
+
+            for (const dest of destinations) {
+              await supabaseAdmin.from("bi_deliveries").insert({
+                destination_id: dest.id,
+                status: "accepted",
+                payload_kind: "snapshot",
+                triggered_by: triggeredBy,
+                request_ip: requestIp,
+                payload_bytes: payloadStr.length,
+                changed_sections: Object.keys(sectionHashes),
+                rows_affected: 0,
+                duration_ms: 0,
+                error_message:
+                  "Snapshot persisted and ready for pull, but background processing is unavailable in this runtime.",
+              });
+            }
+
+            void processInBackground().catch((err) => {
+              console.error("bi push best-effort background delivery error", err);
+            });
+          }
 
           return json(
             {
@@ -445,7 +474,10 @@ export const Route = createFileRoute("/api/public/bi/push")({
               accepted: destinations.length,
               payload_hash: payloadHash,
               payload_bytes: payloadStr.length,
-              message: "Push aceito; processamento em background. Acompanhe em bi_deliveries.",
+              background_scheduled: backgroundScheduled,
+              message: backgroundScheduled
+                ? "Push aceito; processamento em background. Acompanhe em bi_deliveries."
+                : "Push aceito; snapshot persistido e pronto para pull. O processamento em background não ficou disponível neste runtime.",
             },
             202
           );
