@@ -70,6 +70,36 @@ function ipAllowed(ip: string | null, allowed: string[]): boolean {
   return allowed.includes(ip);
 }
 
+async function parseDeliveryResponse(res: Response): Promise<{
+  ok: boolean;
+  errorMessage: string | null;
+}> {
+  const bodyText = res.status === 204 ? "" : await res.text().catch(() => "");
+  const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
+  const trimmed = bodyText.trim().toLowerCase();
+  const looksHtml =
+    contentType.includes("text/html") ||
+    trimmed.startsWith("<!doctype html") ||
+    trimmed.startsWith("<html");
+
+  if (!res.ok) {
+    return {
+      ok: false,
+      errorMessage: `HTTP ${res.status}: ${bodyText.slice(0, 500)}`,
+    };
+  }
+
+  if (looksHtml) {
+    return {
+      ok: false,
+      errorMessage:
+        "Destination URL returned HTML instead of an API response. Configure the webhook/API endpoint, not a dashboard page.",
+    };
+  }
+
+  return { ok: true, errorMessage: null };
+}
+
 async function authenticate(
   request: Request
 ): Promise<
@@ -190,11 +220,11 @@ async function deliverToDestination(args: {
       signal: AbortSignal.timeout(60_000),
     });
     httpStatus = res.status;
-    if (res.ok) {
+    const delivery = await parseDeliveryResponse(res);
+    if (delivery.ok) {
       deliveryStatus = "success";
     } else {
-      const text = await res.text().catch(() => "");
-      errorMessage = `HTTP ${res.status}: ${text.slice(0, 500)}`;
+      errorMessage = delivery.errorMessage;
     }
   } catch (e) {
     errorMessage = e instanceof Error ? e.message : "fetch failed";
