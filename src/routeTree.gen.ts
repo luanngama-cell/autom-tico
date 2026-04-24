@@ -18,6 +18,7 @@ import { Route as DashboardLogsRouteImport } from './routes/dashboard.logs'
 import { Route as DashboardConnectionsRouteImport } from './routes/dashboard.connections'
 import { Route as DashboardApisRouteImport } from './routes/dashboard.apis'
 import { Route as DashboardAgentRouteImport } from './routes/dashboard.agent'
+import { Route as ApiPublicMaintenanceCleanupLogsRouteImport } from './routes/api.public.maintenance.cleanup-logs'
 import { Route as ApiPublicBiSnapshotRouteImport } from './routes/api.public.bi.snapshot'
 import { Route as ApiPublicBiPushRouteImport } from './routes/api.public.bi.push'
 import { Route as ApiPublicAgentManifestRouteImport } from './routes/api.public.agent.manifest'
@@ -68,6 +69,12 @@ const DashboardAgentRoute = DashboardAgentRouteImport.update({
   path: '/agent',
   getParentRoute: () => DashboardRoute,
 } as any)
+const ApiPublicMaintenanceCleanupLogsRoute =
+  ApiPublicMaintenanceCleanupLogsRouteImport.update({
+    id: '/api/public/maintenance/cleanup-logs',
+    path: '/api/public/maintenance/cleanup-logs',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicBiSnapshotRoute = ApiPublicBiSnapshotRouteImport.update({
   id: '/api/public/bi/snapshot',
   path: '/api/public/bi/snapshot',
@@ -103,6 +110,7 @@ export interface FileRoutesByFullPath {
   '/api/public/agent/manifest': typeof ApiPublicAgentManifestRoute
   '/api/public/bi/push': typeof ApiPublicBiPushRoute
   '/api/public/bi/snapshot': typeof ApiPublicBiSnapshotRoute
+  '/api/public/maintenance/cleanup-logs': typeof ApiPublicMaintenanceCleanupLogsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -118,6 +126,7 @@ export interface FileRoutesByTo {
   '/api/public/agent/manifest': typeof ApiPublicAgentManifestRoute
   '/api/public/bi/push': typeof ApiPublicBiPushRoute
   '/api/public/bi/snapshot': typeof ApiPublicBiSnapshotRoute
+  '/api/public/maintenance/cleanup-logs': typeof ApiPublicMaintenanceCleanupLogsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -134,6 +143,7 @@ export interface FileRoutesById {
   '/api/public/agent/manifest': typeof ApiPublicAgentManifestRoute
   '/api/public/bi/push': typeof ApiPublicBiPushRoute
   '/api/public/bi/snapshot': typeof ApiPublicBiSnapshotRoute
+  '/api/public/maintenance/cleanup-logs': typeof ApiPublicMaintenanceCleanupLogsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -151,6 +161,7 @@ export interface FileRouteTypes {
     | '/api/public/agent/manifest'
     | '/api/public/bi/push'
     | '/api/public/bi/snapshot'
+    | '/api/public/maintenance/cleanup-logs'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -166,6 +177,7 @@ export interface FileRouteTypes {
     | '/api/public/agent/manifest'
     | '/api/public/bi/push'
     | '/api/public/bi/snapshot'
+    | '/api/public/maintenance/cleanup-logs'
   id:
     | '__root__'
     | '/'
@@ -181,6 +193,7 @@ export interface FileRouteTypes {
     | '/api/public/agent/manifest'
     | '/api/public/bi/push'
     | '/api/public/bi/snapshot'
+    | '/api/public/maintenance/cleanup-logs'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -191,6 +204,7 @@ export interface RootRouteChildren {
   ApiPublicAgentManifestRoute: typeof ApiPublicAgentManifestRoute
   ApiPublicBiPushRoute: typeof ApiPublicBiPushRoute
   ApiPublicBiSnapshotRoute: typeof ApiPublicBiSnapshotRoute
+  ApiPublicMaintenanceCleanupLogsRoute: typeof ApiPublicMaintenanceCleanupLogsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -258,6 +272,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardAgentRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/api/public/maintenance/cleanup-logs': {
+      id: '/api/public/maintenance/cleanup-logs'
+      path: '/api/public/maintenance/cleanup-logs'
+      fullPath: '/api/public/maintenance/cleanup-logs'
+      preLoaderRoute: typeof ApiPublicMaintenanceCleanupLogsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/bi/snapshot': {
       id: '/api/public/bi/snapshot'
       path: '/api/public/bi/snapshot'
@@ -319,6 +340,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicAgentManifestRoute: ApiPublicAgentManifestRoute,
   ApiPublicBiPushRoute: ApiPublicBiPushRoute,
   ApiPublicBiSnapshotRoute: ApiPublicBiSnapshotRoute,
+  ApiPublicMaintenanceCleanupLogsRoute: ApiPublicMaintenanceCleanupLogsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
