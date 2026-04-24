@@ -96,6 +96,7 @@ public class SyncWorker : BackgroundService
                         row_hash = u.RowHash,
                     }),
                     full_replace = snap.FullReplace,
+                    all_pks = snap.AllPks,
                 });
             }
             catch (Exception ex)
