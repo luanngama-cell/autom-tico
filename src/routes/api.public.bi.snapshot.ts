@@ -127,8 +127,14 @@ export const Route = createFileRoute("/api/public/bi/snapshot")({
           if (!snap) {
             console.log(`[bi-snapshot] no snapshot yet for dest=${destinationId}`);
             return json(
-              { error: "No snapshot available yet", destination: { id: dest.id, name: dest.name } },
-              404
+              {
+                ok: false,
+                code: "SNAPSHOT_NOT_READY",
+                message:
+                  "Endpoint OK, mas o agente ainda não enviou nenhum snapshot para este destino. Inicie o SqlSyncAgent com o destino configurado para gerar o primeiro push.",
+                destination: { id: dest.id, name: dest.name },
+              },
+              200 // intencional: rota existe e auth está OK; só não há dados ainda
             );
           }
 
