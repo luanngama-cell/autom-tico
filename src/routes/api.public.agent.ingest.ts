@@ -51,6 +51,13 @@ const TableSchema = z.object({
     .max(5000)
     .optional(),
   full_replace: z.boolean().optional(),
+  // Reconciliation: agent sends the FULL list of PKs that currently exist in source.
+  // Server deletes any synced_rows whose pk_hash is not in this set.
+  // Lightweight (PKs only, no row data) so it scales for incremental tables too.
+  all_pks: z
+    .array(z.record(z.string(), z.unknown()))
+    .max(2_000_000)
+    .optional(),
 });
 
 const IngestSchema = z.object({
