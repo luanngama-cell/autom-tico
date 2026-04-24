@@ -120,7 +120,7 @@ function ApisPage() {
                     </TableCell>
                   </TableRow>
                 )}
-              </>
+              </Fragment>
 
               {/* Custom APIs */}
               {loading ? (
@@ -136,7 +136,7 @@ function ApisPage() {
                   <TableCell
                     colSpan={7}
                     className="py-8 text-center text-sm text-muted-foreground"
-              </Fragment>
+                  >
                     Nenhuma API customizada criada.
                   </TableCell>
                 </TableRow>
@@ -188,7 +188,7 @@ function ApisPage() {
                         </TableCell>
                       </TableRow>
                     )}
-                  </>
+                  </Fragment>
                 ))
               )}
             </TableBody>
