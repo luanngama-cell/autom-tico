@@ -388,11 +388,13 @@ function DestinationDetail({
   destination,
   tokens,
   deliveries,
+  scripts,
   onChange,
 }: {
   destination: Destination;
   tokens: Token[];
   deliveries: Delivery[];
+  scripts: ScriptOption[];
   onChange: () => void;
 }) {
   const toggleEnabled = async () => {
@@ -400,6 +402,19 @@ function DestinationDetail({
       .from("bi_destinations")
       .update({ enabled: !destination.enabled })
       .eq("id", destination.id);
+    onChange();
+  };
+
+  const linkScript = async (scriptId: string | null) => {
+    const { error } = await supabase
+      .from("bi_destinations")
+      .update({ bi_script_id: scriptId })
+      .eq("id", destination.id);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success(scriptId ? "Script vinculado" : "Script desvinculado");
     onChange();
   };
 
@@ -416,6 +431,8 @@ function DestinationDetail({
       onChange();
     }
   };
+
+  const linkedScript = scripts.find((s) => s.id === destination.bi_script_id);
 
   return (
     <div className="space-y-4">
