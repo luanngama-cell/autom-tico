@@ -85,6 +85,15 @@ type Delivery = {
   created_at: string;
 };
 
+function isLikelyApiEndpoint(url: string) {
+  try {
+    const parsed = new URL(url);
+    return parsed.pathname.includes("/api/") || parsed.pathname.startsWith("/webhook");
+  } catch {
+    return false;
+  }
+}
+
 export function BiDestinationsPanel() {
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [tokens, setTokens] = useState<Token[]>([]);
@@ -247,6 +256,10 @@ function NewDestinationDialog({ onCreated }: { onCreated: () => void }) {
       new URL(form.endpoint_url);
     } catch {
       toast.error("URL inválida");
+      return;
+    }
+    if (!isLikelyApiEndpoint(form.endpoint_url.trim())) {
+      toast.error("Use a URL de API/webhook, não uma página do dashboard");
       return;
     }
     setSaving(true);
