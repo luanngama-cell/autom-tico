@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { getExternalBaseUrl } from "@/lib/public-base-url";
 import {
   Dialog,
   DialogContent,
@@ -61,6 +62,9 @@ async function sha256Hex(s: string) {
 }
 
 function AgentPage() {
+  const publicBaseUrl = getExternalBaseUrl(
+    typeof window !== "undefined" ? window.location.origin : undefined
+  );
   const [conns, setConns] = useState<Conn[]>([]);
   const [tokens, setTokens] = useState<TokenRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -148,7 +152,7 @@ dotnet publish -c Release -r win-x64 --self-contained true ^
           </p>
           <pre className="mt-3 overflow-x-auto rounded bg-muted p-3 font-mono text-xs">{`{
   "Cloud": {
-    "BaseUrl": "${typeof window !== "undefined" ? window.location.origin : ""}",
+    "BaseUrl": "${publicBaseUrl}",
     "AgentSecret": "<AGENT_INGEST_SECRET>",
     "Token": "<conexaoId>.<tokenGerado>"
   },
