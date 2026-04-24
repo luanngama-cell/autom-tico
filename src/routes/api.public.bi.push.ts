@@ -352,46 +352,75 @@ export const Route = createFileRoute("/api/public/bi/push")({
           const { data: destinations, error: dErr } = await destQuery;
           if (dErr) return json({ error: dErr.message }, 500);
           if (!destinations || destinations.length === 0) {
-            return json({ ok: true, delivered: [], message: "No destinations" });
+            return json({ ok: true, accepted: 0, message: "No destinations" });
           }
 
-          const results = [];
-          for (const dest of destinations) {
-            // Valida IP allowlist por destino
-            if (!ipAllowed(requestIp, dest.allowed_ips ?? [])) {
-              await supabaseAdmin.from("bi_deliveries").insert({
-                destination_id: dest.id,
-                status: "rejected",
-                payload_kind: "snapshot",
-                triggered_by: triggeredBy,
-                request_ip: requestIp,
-                payload_bytes: payloadStr.length,
-                changed_sections: [],
-                rows_affected: 0,
-                error_message: `IP ${requestIp ?? "unknown"} not in allowlist`,
-              });
-              results.push({
-                destinationId: dest.id,
-                name: dest.name,
-                status: "rejected",
-                error: "ip_not_allowed",
-              });
-              continue;
+          // Processa entregas em background (evita timeout do Cloudflare em payloads grandes).
+          // Responde 202 Accepted imediatamente; cliente acompanha pelo bi_deliveries.
+          const processInBackground = async () => {
+            for (const dest of destinations) {
+              try {
+                if (!ipAllowed(requestIp, dest.allowed_ips ?? [])) {
+                  await supabaseAdmin.from("bi_deliveries").insert({
+                    destination_id: dest.id,
+                    status: "rejected",
+                    payload_kind: "snapshot",
+                    triggered_by: triggeredBy,
+                    request_ip: requestIp,
+                    payload_bytes: payloadStr.length,
+                    changed_sections: [],
+                    rows_affected: 0,
+                    error_message: `IP ${requestIp ?? "unknown"} not in allowlist`,
+                  });
+                  continue;
+                }
+
+                await deliverToDestination({
+                  destination: dest,
+                  payload,
+                  payloadStr,
+                  payloadHash,
+                  sectionHashes,
+                  triggeredBy,
+                  requestIp,
+                });
+              } catch (err) {
+                console.error("bi push background delivery error", dest.id, err);
+                await supabaseAdmin.from("bi_deliveries").insert({
+                  destination_id: dest.id,
+                  status: "failed",
+                  payload_kind: "snapshot",
+                  triggered_by: triggeredBy,
+                  request_ip: requestIp,
+                  payload_bytes: payloadStr.length,
+                  changed_sections: [],
+                  rows_affected: 0,
+                  error_message: err instanceof Error ? err.message : "background error",
+                });
+              }
             }
+          };
 
-            const r = await deliverToDestination({
-              destination: dest,
-              payload,
-              payloadStr,
-              payloadHash,
-              sectionHashes,
-              triggeredBy,
-              requestIp,
-            });
-            results.push(r);
-          }
+          // Cloudflare Workers: waitUntil mantém o worker vivo após o response.
+          const ctx = (request as unknown as { cf?: { waitUntil?: (p: Promise<unknown>) => void } }).cf;
+          const globalCtx = (globalThis as unknown as {
+            __cf_ctx?: { waitUntil?: (p: Promise<unknown>) => void };
+          }).__cf_ctx;
+          const waitUntil =
+            ctx?.waitUntil ?? globalCtx?.waitUntil ?? ((p: Promise<unknown>) => void p.catch(() => {}));
 
-          return json({ ok: true, delivered: results });
+          waitUntil(processInBackground());
+
+          return json(
+            {
+              ok: true,
+              accepted: destinations.length,
+              payload_hash: payloadHash,
+              payload_bytes: payloadStr.length,
+              message: "Push aceito; processamento em background. Acompanhe em bi_deliveries.",
+            },
+            202
+          );
         } catch (e) {
           const msg = e instanceof Error ? e.message : "unknown";
           console.error("bi push error", e);
