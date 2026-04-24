@@ -20,6 +20,7 @@ import { Route as DashboardApisRouteImport } from './routes/dashboard.apis'
 import { Route as DashboardAgentRouteImport } from './routes/dashboard.agent'
 import { Route as ApiPublicMaintenanceCleanupLogsRouteImport } from './routes/api.public.maintenance.cleanup-logs'
 import { Route as ApiPublicBiSnapshotRouteImport } from './routes/api.public.bi.snapshot'
+import { Route as ApiPublicBiRunScriptsRouteImport } from './routes/api.public.bi.run-scripts'
 import { Route as ApiPublicBiPushRouteImport } from './routes/api.public.bi.push'
 import { Route as ApiPublicAgentManifestRouteImport } from './routes/api.public.agent.manifest'
 import { Route as ApiPublicAgentIngestRouteImport } from './routes/api.public.agent.ingest'
@@ -80,6 +81,11 @@ const ApiPublicBiSnapshotRoute = ApiPublicBiSnapshotRouteImport.update({
   path: '/api/public/bi/snapshot',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicBiRunScriptsRoute = ApiPublicBiRunScriptsRouteImport.update({
+  id: '/api/public/bi/run-scripts',
+  path: '/api/public/bi/run-scripts',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicBiPushRoute = ApiPublicBiPushRouteImport.update({
   id: '/api/public/bi/push',
   path: '/api/public/bi/push',
@@ -109,6 +115,7 @@ export interface FileRoutesByFullPath {
   '/api/public/agent/ingest': typeof ApiPublicAgentIngestRoute
   '/api/public/agent/manifest': typeof ApiPublicAgentManifestRoute
   '/api/public/bi/push': typeof ApiPublicBiPushRoute
+  '/api/public/bi/run-scripts': typeof ApiPublicBiRunScriptsRoute
   '/api/public/bi/snapshot': typeof ApiPublicBiSnapshotRoute
   '/api/public/maintenance/cleanup-logs': typeof ApiPublicMaintenanceCleanupLogsRoute
 }
@@ -125,6 +132,7 @@ export interface FileRoutesByTo {
   '/api/public/agent/ingest': typeof ApiPublicAgentIngestRoute
   '/api/public/agent/manifest': typeof ApiPublicAgentManifestRoute
   '/api/public/bi/push': typeof ApiPublicBiPushRoute
+  '/api/public/bi/run-scripts': typeof ApiPublicBiRunScriptsRoute
   '/api/public/bi/snapshot': typeof ApiPublicBiSnapshotRoute
   '/api/public/maintenance/cleanup-logs': typeof ApiPublicMaintenanceCleanupLogsRoute
 }
@@ -142,6 +150,7 @@ export interface FileRoutesById {
   '/api/public/agent/ingest': typeof ApiPublicAgentIngestRoute
   '/api/public/agent/manifest': typeof ApiPublicAgentManifestRoute
   '/api/public/bi/push': typeof ApiPublicBiPushRoute
+  '/api/public/bi/run-scripts': typeof ApiPublicBiRunScriptsRoute
   '/api/public/bi/snapshot': typeof ApiPublicBiSnapshotRoute
   '/api/public/maintenance/cleanup-logs': typeof ApiPublicMaintenanceCleanupLogsRoute
 }
@@ -160,6 +169,7 @@ export interface FileRouteTypes {
     | '/api/public/agent/ingest'
     | '/api/public/agent/manifest'
     | '/api/public/bi/push'
+    | '/api/public/bi/run-scripts'
     | '/api/public/bi/snapshot'
     | '/api/public/maintenance/cleanup-logs'
   fileRoutesByTo: FileRoutesByTo
@@ -176,6 +186,7 @@ export interface FileRouteTypes {
     | '/api/public/agent/ingest'
     | '/api/public/agent/manifest'
     | '/api/public/bi/push'
+    | '/api/public/bi/run-scripts'
     | '/api/public/bi/snapshot'
     | '/api/public/maintenance/cleanup-logs'
   id:
@@ -192,6 +203,7 @@ export interface FileRouteTypes {
     | '/api/public/agent/ingest'
     | '/api/public/agent/manifest'
     | '/api/public/bi/push'
+    | '/api/public/bi/run-scripts'
     | '/api/public/bi/snapshot'
     | '/api/public/maintenance/cleanup-logs'
   fileRoutesById: FileRoutesById
@@ -203,6 +215,7 @@ export interface RootRouteChildren {
   ApiPublicAgentIngestRoute: typeof ApiPublicAgentIngestRoute
   ApiPublicAgentManifestRoute: typeof ApiPublicAgentManifestRoute
   ApiPublicBiPushRoute: typeof ApiPublicBiPushRoute
+  ApiPublicBiRunScriptsRoute: typeof ApiPublicBiRunScriptsRoute
   ApiPublicBiSnapshotRoute: typeof ApiPublicBiSnapshotRoute
   ApiPublicMaintenanceCleanupLogsRoute: typeof ApiPublicMaintenanceCleanupLogsRoute
 }
@@ -286,6 +299,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicBiSnapshotRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/bi/run-scripts': {
+      id: '/api/public/bi/run-scripts'
+      path: '/api/public/bi/run-scripts'
+      fullPath: '/api/public/bi/run-scripts'
+      preLoaderRoute: typeof ApiPublicBiRunScriptsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/bi/push': {
       id: '/api/public/bi/push'
       path: '/api/public/bi/push'
@@ -339,6 +359,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicAgentIngestRoute: ApiPublicAgentIngestRoute,
   ApiPublicAgentManifestRoute: ApiPublicAgentManifestRoute,
   ApiPublicBiPushRoute: ApiPublicBiPushRoute,
+  ApiPublicBiRunScriptsRoute: ApiPublicBiRunScriptsRoute,
   ApiPublicBiSnapshotRoute: ApiPublicBiSnapshotRoute,
   ApiPublicMaintenanceCleanupLogsRoute: ApiPublicMaintenanceCleanupLogsRoute,
 }
