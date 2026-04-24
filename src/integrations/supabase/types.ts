@@ -619,6 +619,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      validate_bi_cron_token: { Args: { _token: string }; Returns: boolean }
       validate_maintenance_token: { Args: { _token: string }; Returns: boolean }
     }
     Enums: {
