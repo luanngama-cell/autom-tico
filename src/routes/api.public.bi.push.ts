@@ -402,7 +402,6 @@ export const Route = createFileRoute("/api/public/bi/push")({
           };
 
           // Cloudflare Workers: waitUntil mantém o worker vivo após o response.
-          // @ts-expect-error - ctx pode não estar tipado mas existe em runtime CF
           const ctx = (request as unknown as { cf?: { waitUntil?: (p: Promise<unknown>) => void } }).cf;
           const globalCtx = (globalThis as unknown as {
             __cf_ctx?: { waitUntil?: (p: Promise<unknown>) => void };
