@@ -156,6 +156,7 @@ async function deliverToDestination(args: {
     endpoint_url: string;
     enabled: boolean;
     allowed_ips: string[];
+    last_status?: string | null;
   };
   payload: Record<string, unknown>;
   payloadStr: string;
@@ -183,7 +184,7 @@ async function deliverToDestination(args: {
     ? diffSections(prevHashes, sectionHashes)
     : Object.keys(sectionHashes);
 
-  if (prev?.payload_hash === payloadHash) {
+  if (prev?.payload_hash === payloadHash && destination.last_status !== "failed") {
     await supabaseAdmin.from("bi_deliveries").insert({
       destination_id: destination.id,
       status: "skipped",
@@ -207,6 +208,24 @@ async function deliverToDestination(args: {
   let httpStatus: number | null = null;
   let errorMessage: string | null = null;
   let deliveryStatus: "success" | "failed" = "failed";
+  const attemptedAt = new Date().toISOString();
+
+  await supabaseAdmin.from("bi_snapshots").upsert(
+    {
+      destination_id: destination.id,
+      payload: payload as never,
+      payload_hash: payloadHash,
+      section_hashes: sectionHashes as never,
+      generated_at: attemptedAt,
+      updated_at: attemptedAt,
+    },
+    { onConflict: "destination_id" }
+  );
+
+  await supabaseAdmin
+    .from("bi_destinations")
+    .update({ last_pushed_at: attemptedAt })
+    .eq("id", destination.id);
 
   try {
     const res = await fetch(destination.endpoint_url, {
@@ -232,23 +251,10 @@ async function deliverToDestination(args: {
 
   const duration = Date.now() - start;
 
-  // Persistência: snapshot só atualiza em sucesso (para reentregar em retry)
   if (deliveryStatus === "success") {
-    await supabaseAdmin.from("bi_snapshots").upsert(
-      {
-        destination_id: destination.id,
-        payload: payload as never,
-        payload_hash: payloadHash,
-        section_hashes: sectionHashes as never,
-        generated_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "destination_id" }
-    );
     await supabaseAdmin
       .from("bi_destinations")
       .update({
-        last_pushed_at: new Date().toISOString(),
         last_status: "success",
         last_error: null,
       })
