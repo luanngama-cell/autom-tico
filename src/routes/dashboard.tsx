@@ -142,7 +142,7 @@ function Overview() {
 
   useEffect(() => {
     load();
-    const i = setInterval(load, 15000);
+    const i = setInterval(load, 60000);
     return () => clearInterval(i);
   }, []);
 
