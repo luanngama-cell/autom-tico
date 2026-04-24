@@ -657,19 +657,23 @@ function NewTokenDialog({
         </DialogHeader>
         {generated ? (
           <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Cole este valor exatamente como está no campo de token do BI
+              (formato <code className="font-mono">DESTINATION_ID.RAW_TOKEN</code>):
+            </p>
             <div className="rounded-md border bg-muted p-3 font-mono text-xs break-all">
-              {generated}
+              {destinationId}.{generated}
             </div>
             <Button
               variant="outline"
               className="w-full"
               onClick={() => {
-                navigator.clipboard.writeText(generated);
+                navigator.clipboard.writeText(`${destinationId}.${generated}`);
                 toast.success("Copiado");
               }}
             >
               <Copy className="mr-2 h-4 w-4" />
-              Copiar
+              Copiar token completo
             </Button>
           </div>
         ) : (
