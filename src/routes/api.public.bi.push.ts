@@ -25,7 +25,7 @@ import { z } from "zod";
  * Body: JSON livre (snapshot completo do BI). Limite ~10MB.
  */
 
-const MAX_PAYLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
+const MAX_PAYLOAD_BYTES = 50 * 1024 * 1024; // 50 MB
 
 function sha256Hex(input: string) {
   return createHash("sha256").update(input).digest("hex");
