@@ -18,24 +18,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isMaster, setIsMaster] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const checkRole = async (userId: string) => {
-    const { data } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userId)
-      .eq("role", "master")
-      .maybeSingle();
-    setIsMaster(!!data);
-  };
-
   useEffect(() => {
+    let cachedRoleUserId: string | null = null;
+
+    const checkRole = async (userId: string) => {
+      if (cachedRoleUserId === userId) return; // already checked this user
+      cachedRoleUserId = userId;
+      const { data } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId)
+        .eq("role", "master")
+        .maybeSingle();
+      setIsMaster(!!data);
+    };
+
     // Listener FIRST
     const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
       if (newSession?.user) {
-        // defer to avoid deadlock
+        // defer to avoid deadlock; cache prevents repeat fetches
         setTimeout(() => checkRole(newSession.user.id), 0);
       } else {
+        cachedRoleUserId = null;
         setIsMaster(false);
       }
     });
