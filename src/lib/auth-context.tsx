@@ -7,17 +7,13 @@ interface AuthState {
   user: User | null;
   isMaster: boolean;
   loading: boolean;
+  roleResolved: boolean;
   roleError: string | null;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
-
-const projectRef =
-  import.meta.env.VITE_SUPABASE_URL?.split("//")[1]?.split(".")[0] ??
-  import.meta.env.VITE_SUPABASE_PROJECT_ID ??
-  "project";
 
 function roleCacheKey(userId: string) {
   return `sql-sync:is-master:${userId}`;
@@ -50,12 +46,17 @@ function writeCachedMasterRole(userId: string, isMaster: boolean) {
 function clearStoredAuthSession() {
   if (typeof window === "undefined") return;
 
-  try {
-    for (const key of Object.keys(window.localStorage)) {
-      if (key.startsWith(`sb-${projectRef}-auth-token`)) {
-        window.localStorage.removeItem(key);
+  const clearStore = (store: Storage) => {
+    for (const key of Object.keys(store)) {
+      if (key.startsWith("sb-") || key.startsWith("sql-sync:is-master:")) {
+        store.removeItem(key);
       }
     }
+  };
+
+  try {
+    clearStore(window.localStorage);
+    clearStore(window.sessionStorage);
   } catch {
     // ignore storage failures
   }
@@ -65,17 +66,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isMaster, setIsMaster] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [roleResolved, setRoleResolved] = useState(false);
   const [roleError, setRoleError] = useState<string | null>(null);
-  const checkedRoleUserIdRef = useRef<string | null>(null);
+  const activeRoleUserIdRef = useRef<string | null>(null);
+  const activeRolePromiseRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     let mounted = true;
 
     const resetAuthState = () => {
-      checkedRoleUserIdRef.current = null;
+      activeRoleUserIdRef.current = null;
+      activeRolePromiseRef.current = null;
+
       if (!mounted) return;
+
       setSession(null);
       setIsMaster(false);
+      setRoleResolved(false);
       setRoleError(null);
       setLoading(false);
     };
@@ -83,73 +90,85 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const checkRole = async (userId: string) => {
       const hasCachedMasterRole = readCachedMasterRole(userId);
 
-      if (hasCachedMasterRole && mounted) {
-        setIsMaster(true);
-        setRoleError(null);
-      }
-
-      if (checkedRoleUserIdRef.current === userId) {
-        if (mounted) setLoading(false);
-        return;
-      }
-
-      checkedRoleUserIdRef.current = userId;
-
-      const { data, error } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", userId)
-        .eq("role", "master")
-        .maybeSingle();
-
-      if (!mounted) return;
-
-      if (error) {
-        checkedRoleUserIdRef.current = null;
-        if (!hasCachedMasterRole) {
-          setIsMaster(false);
-          setRoleError("Não foi possível validar seu acesso agora. Tente novamente.");
+      if (mounted) {
+        if (hasCachedMasterRole) {
+          setIsMaster(true);
+          setRoleResolved(true);
+          setRoleError(null);
+        } else {
+          setRoleResolved(false);
         }
-        setLoading(false);
-        return;
       }
 
-      const hasMasterRole = !!data;
-      writeCachedMasterRole(userId, hasMasterRole);
-      setIsMaster(hasMasterRole);
-      setRoleError(null);
-      setLoading(false);
+      if (activeRoleUserIdRef.current === userId && activeRolePromiseRef.current) {
+        return activeRolePromiseRef.current;
+      }
+
+      activeRoleUserIdRef.current = userId;
+
+      const rolePromise = (async () => {
+        const { data, error } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", userId)
+          .eq("role", "master")
+          .maybeSingle();
+
+        if (!mounted) return;
+
+        if (error) {
+          activeRoleUserIdRef.current = null;
+
+          if (!hasCachedMasterRole) {
+            setIsMaster(false);
+            setRoleResolved(false);
+            setRoleError("Não foi possível validar seu acesso agora. Tente novamente.");
+          }
+
+          return;
+        }
+
+        const hasMasterRole = !!data;
+        writeCachedMasterRole(userId, hasMasterRole);
+        setIsMaster(hasMasterRole);
+        setRoleResolved(true);
+        setRoleError(null);
+      })().finally(() => {
+        if (activeRoleUserIdRef.current === userId) {
+          activeRolePromiseRef.current = null;
+        }
+
+        if (mounted) {
+          setLoading(false);
+        }
+      });
+
+      activeRolePromiseRef.current = rolePromise;
+      return rolePromise;
     };
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const handleSession = (nextSession: Session | null) => {
       if (!mounted) return;
 
-      setSession(newSession);
+      setSession(nextSession);
 
-      if (newSession?.user) {
+      if (nextSession?.user) {
         setLoading(true);
         setRoleError(null);
-        setTimeout(() => {
-          void checkRole(newSession.user.id);
-        }, 0);
+        void checkRole(nextSession.user.id);
       } else {
         resetAuthState();
       }
+    };
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      handleSession(newSession);
     });
 
     supabase.auth
       .getSession()
       .then(({ data: { session: existing } }) => {
-        if (!mounted) return;
-
-        setSession(existing);
-
-        if (existing?.user) {
-          setLoading(true);
-          void checkRole(existing.user.id);
-        } else {
-          resetAuthState();
-        }
+        handleSession(existing);
       })
       .catch(() => {
         resetAuthState();
@@ -172,14 +191,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // ignore remote logout failures and clear local state anyway
     } finally {
-      checkedRoleUserIdRef.current = null;
+      activeRoleUserIdRef.current = null;
+      activeRolePromiseRef.current = null;
       clearStoredAuthSession();
       setSession(null);
       setIsMaster(false);
+      setRoleResolved(false);
       setRoleError(null);
       setLoading(false);
 
-      if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+      if (typeof window !== "undefined") {
         window.location.replace("/login");
       }
     }
@@ -192,6 +213,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user: session?.user ?? null,
         isMaster,
         loading,
+        roleResolved,
         roleError,
         signIn,
         signOut,
