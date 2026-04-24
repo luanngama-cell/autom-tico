@@ -56,7 +56,7 @@ export const Route = createFileRoute("/api/public/bi/run-scripts")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        if (!isAuthorized(request)) {
+        if (!(await isAuthorized(request))) {
           return json({ error: "Unauthorized" }, 401);
         }
 
