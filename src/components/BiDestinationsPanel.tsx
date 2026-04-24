@@ -208,6 +208,7 @@ export function BiDestinationsPanel() {
                 destination={selectedDest}
                 tokens={selectedTokens}
                 deliveries={selectedDeliveries}
+                scripts={scripts}
                 onChange={load}
               />
             ) : (
