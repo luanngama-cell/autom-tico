@@ -486,6 +486,54 @@ function DestinationDetail({
         )}
       </div>
 
+      {/* Script vinculado */}
+      <div className="rounded-lg border bg-card p-5">
+        <h4 className="font-semibold text-sm flex items-center gap-2">
+          <FileCode2 className="h-4 w-4" />
+          Script SQL vinculado
+        </h4>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Este destino só recebe snapshots quando há um script vinculado. Gerencie scripts em{" "}
+          <a href="/dashboard/bi-scripts" className="underline">
+            /dashboard/bi-scripts
+          </a>
+          .
+        </p>
+        {scripts.length === 0 ? (
+          <p className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-600 dark:text-amber-400">
+            Nenhum script cadastrado. Crie um em{" "}
+            <a href="/dashboard/bi-scripts" className="underline font-medium">
+              Scripts BI
+            </a>{" "}
+            antes de vincular.
+          </p>
+        ) : (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <select
+              className="h-9 rounded-md border bg-background px-3 text-sm"
+              value={destination.bi_script_id ?? ""}
+              onChange={(e) => linkScript(e.target.value || null)}
+            >
+              <option value="">— nenhum —</option>
+              {scripts.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} {s.enabled ? "" : "(desativado)"}
+                </option>
+              ))}
+            </select>
+            {linkedScript ? (
+              <Badge variant="outline" className="text-xs">
+                Vinculado: {linkedScript.name}
+              </Badge>
+            ) : (
+              <Badge variant="secondary" className="text-xs">
+                Sem script — snapshots não serão gerados
+              </Badge>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Tokens */}
       <div className="rounded-lg border bg-card p-5">
         <div className="flex items-center justify-between">
