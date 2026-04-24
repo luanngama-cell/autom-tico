@@ -85,6 +85,7 @@ export const Route = createFileRoute("/api/public/bi/snapshot")({
             .maybeSingle();
 
           if (!tokenRow || tokenRow.revoked_at) {
+            console.log(`[bi-snapshot] reject: token not found or revoked for dest=${destinationId}`);
             return json({ error: "Unauthorized" }, 401);
           }
 
@@ -96,6 +97,7 @@ export const Route = createFileRoute("/api/public/bi/snapshot")({
             .maybeSingle();
 
           if (!dest || !dest.enabled) {
+            console.log(`[bi-snapshot] reject: destination disabled or missing dest=${destinationId}`);
             return json({ error: "Destination disabled" }, 403);
           }
 
@@ -105,6 +107,7 @@ export const Route = createFileRoute("/api/public/bi/snapshot")({
             dest.allowed_ips.length > 0 &&
             (!ip || !dest.allowed_ips.includes(ip))
           ) {
+            console.log(`[bi-snapshot] reject: IP ${ip} not in allowlist for dest=${destinationId}`);
             return json({ error: "IP not allowed" }, 403);
           }
 
@@ -122,6 +125,7 @@ export const Route = createFileRoute("/api/public/bi/snapshot")({
             .maybeSingle();
 
           if (!snap) {
+            console.log(`[bi-snapshot] no snapshot yet for dest=${destinationId}`);
             return json(
               { error: "No snapshot available yet", destination: { id: dest.id, name: dest.name } },
               404
