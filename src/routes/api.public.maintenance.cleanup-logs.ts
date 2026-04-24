@@ -1,23 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { timingSafeEqual } from "crypto";
 
 /**
  * Scheduled maintenance: delete log rows older than 30 days.
- * Called by pg_cron daily. Auth: X-Maintenance-Secret = AGENT_INGEST_SECRET.
+ * Called by pg_cron daily. Auth: X-Maintenance-Token validated against vault.
  */
 export const Route = createFileRoute("/api/public/maintenance/cleanup-logs")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const secret = request.headers.get("x-maintenance-secret") ?? "";
-        const expected = process.env.AGENT_INGEST_SECRET;
-        if (!expected) {
-          return json({ error: "Server misconfigured" }, 500);
+        const token = request.headers.get("x-maintenance-token") ?? "";
+        if (!token) {
+          return json({ error: "Missing token" }, 401);
         }
-        const a = Buffer.from(secret);
-        const b = Buffer.from(expected);
-        if (a.length !== b.length || !timingSafeEqual(a, b)) {
+
+        const { data: valid, error: vErr } = await supabaseAdmin.rpc(
+          "validate_maintenance_token",
+          { _token: token }
+        );
+        if (vErr || !valid) {
           return json({ error: "Unauthorized" }, 401);
         }
 
