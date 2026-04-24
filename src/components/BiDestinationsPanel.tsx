@@ -34,6 +34,7 @@ import {
   AlertCircle,
   Clock,
   RefreshCw,
+  FileCode2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -50,6 +51,13 @@ type Destination = {
   last_pushed_at: string | null;
   last_status: string | null;
   last_error: string | null;
+  bi_script_id: string | null;
+};
+
+type ScriptOption = {
+  id: string;
+  name: string;
+  enabled: boolean;
 };
 
 type Token = {
@@ -81,11 +89,12 @@ export function BiDestinationsPanel() {
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [tokens, setTokens] = useState<Token[]>([]);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
+  const [scripts, setScripts] = useState<ScriptOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
 
   const load = async () => {
-    const [d, t, dl] = await Promise.all([
+    const [d, t, dl, s] = await Promise.all([
       supabase.from("bi_destinations").select("*").order("created_at", { ascending: false }),
       supabase.from("bi_destination_tokens").select("*").order("created_at", { ascending: false }),
       supabase
@@ -93,10 +102,15 @@ export function BiDestinationsPanel() {
         .select("*")
         .order("created_at", { ascending: false })
         .limit(50),
+      supabase
+        .from("bi_scripts")
+        .select("id, name, enabled")
+        .order("name", { ascending: true }),
     ]);
     setDestinations((d.data as Destination[]) ?? []);
     setTokens((t.data as Token[]) ?? []);
     setDeliveries((dl.data as Delivery[]) ?? []);
+    setScripts((s.data as ScriptOption[]) ?? []);
     setLoading(false);
   };
 
@@ -195,6 +209,7 @@ export function BiDestinationsPanel() {
                 destination={selectedDest}
                 tokens={selectedTokens}
                 deliveries={selectedDeliveries}
+                scripts={scripts}
                 onChange={load}
               />
             ) : (
@@ -374,11 +389,13 @@ function DestinationDetail({
   destination,
   tokens,
   deliveries,
+  scripts,
   onChange,
 }: {
   destination: Destination;
   tokens: Token[];
   deliveries: Delivery[];
+  scripts: ScriptOption[];
   onChange: () => void;
 }) {
   const toggleEnabled = async () => {
@@ -386,6 +403,19 @@ function DestinationDetail({
       .from("bi_destinations")
       .update({ enabled: !destination.enabled })
       .eq("id", destination.id);
+    onChange();
+  };
+
+  const linkScript = async (scriptId: string | null) => {
+    const { error } = await supabase
+      .from("bi_destinations")
+      .update({ bi_script_id: scriptId })
+      .eq("id", destination.id);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success(scriptId ? "Script vinculado" : "Script desvinculado");
     onChange();
   };
 
@@ -402,6 +432,8 @@ function DestinationDetail({
       onChange();
     }
   };
+
+  const linkedScript = scripts.find((s) => s.id === destination.bi_script_id);
 
   return (
     <div className="space-y-4">
@@ -451,6 +483,54 @@ function DestinationDetail({
         {destination.last_error && (
           <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
             <span className="font-medium">Último erro:</span> {destination.last_error}
+          </div>
+        )}
+      </div>
+
+      {/* Script vinculado */}
+      <div className="rounded-lg border bg-card p-5">
+        <h4 className="font-semibold text-sm flex items-center gap-2">
+          <FileCode2 className="h-4 w-4" />
+          Script SQL vinculado
+        </h4>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Este destino só recebe snapshots quando há um script vinculado. Gerencie scripts em{" "}
+          <a href="/dashboard/bi-scripts" className="underline">
+            /dashboard/bi-scripts
+          </a>
+          .
+        </p>
+        {scripts.length === 0 ? (
+          <p className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-600 dark:text-amber-400">
+            Nenhum script cadastrado. Crie um em{" "}
+            <a href="/dashboard/bi-scripts" className="underline font-medium">
+              Scripts BI
+            </a>{" "}
+            antes de vincular.
+          </p>
+        ) : (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <select
+              className="h-9 rounded-md border bg-background px-3 text-sm"
+              value={destination.bi_script_id ?? ""}
+              onChange={(e) => linkScript(e.target.value || null)}
+            >
+              <option value="">— nenhum —</option>
+              {scripts.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} {s.enabled ? "" : "(desativado)"}
+                </option>
+              ))}
+            </select>
+            {linkedScript ? (
+              <Badge variant="outline" className="text-xs">
+                Vinculado: {linkedScript.name}
+              </Badge>
+            ) : (
+              <Badge variant="secondary" className="text-xs">
+                Sem script — snapshots não serão gerados
+              </Badge>
+            )}
           </div>
         )}
       </div>
