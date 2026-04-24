@@ -64,7 +64,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    // local scope: instantâneo, evita 504 do logout global
+    await supabase.auth.signOut({ scope: "local" });
   };
 
   return (
