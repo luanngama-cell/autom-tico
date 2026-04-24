@@ -39,7 +39,7 @@ const nav = [
 ];
 
 function DashboardLayout() {
-  const { session, isMaster, loading, signOut, user } = useAuth();
+  const { session, isMaster, loading, roleError, signOut, user } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -51,6 +51,22 @@ function DashboardLayout() {
   }
 
   if (!session) return <Navigate to="/login" />;
+  if (roleError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <div className="max-w-md text-center">
+          <h1 className="text-2xl font-bold">Falha ao validar acesso</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{roleError}</p>
+          <div className="mt-4 flex items-center justify-center gap-2">
+            <Button variant="outline" onClick={() => window.location.reload()}>
+              Tentar novamente
+            </Button>
+            <Button onClick={signOut}>Sair</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (!isMaster) {
     return (
       <div className="flex min-h-screen items-center justify-center px-4">
