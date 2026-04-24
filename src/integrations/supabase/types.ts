@@ -152,6 +152,7 @@ export type Database = {
       bi_destinations: {
         Row: {
           allowed_ips: string[]
+          bi_script_id: string | null
           created_at: string
           description: string | null
           enabled: boolean
@@ -168,6 +169,7 @@ export type Database = {
         }
         Insert: {
           allowed_ips?: string[]
+          bi_script_id?: string | null
           created_at?: string
           description?: string | null
           enabled?: boolean
@@ -184,6 +186,7 @@ export type Database = {
         }
         Update: {
           allowed_ips?: string[]
+          bi_script_id?: string | null
           created_at?: string
           description?: string | null
           enabled?: boolean
@@ -196,6 +199,62 @@ export type Database = {
           name?: string
           push_interval_minutes?: number
           source_database_name?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bi_destinations_bi_script_id_fkey"
+            columns: ["bi_script_id"]
+            isOneToOne: false
+            referencedRelation: "bi_scripts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bi_scripts: {
+        Row: {
+          created_at: string
+          description: string | null
+          enabled: boolean
+          id: string
+          last_duration_ms: number | null
+          last_error: string | null
+          last_row_count: number | null
+          last_run_at: string | null
+          last_status: string | null
+          name: string
+          run_interval_minutes: number
+          sql_code: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          id?: string
+          last_duration_ms?: number | null
+          last_error?: string | null
+          last_row_count?: number | null
+          last_run_at?: string | null
+          last_status?: string | null
+          name: string
+          run_interval_minutes?: number
+          sql_code: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          id?: string
+          last_duration_ms?: number | null
+          last_error?: string | null
+          last_row_count?: number | null
+          last_run_at?: string | null
+          last_status?: string | null
+          name?: string
+          run_interval_minutes?: number
+          sql_code?: string
           updated_at?: string
         }
         Relationships: []
@@ -552,6 +611,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      execute_bi_script: { Args: { _sql: string }; Returns: Json }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
