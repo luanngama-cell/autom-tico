@@ -52,4 +52,13 @@ builder.Services.AddHostedService<SyncWorker>();
 builder.Services.AddHostedService<BiPushWorker>();
 
 var host = builder.Build();
+
+var startupLog = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+var syncOptions = host.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<SyncOptions>>().Value;
+startupLog.LogInformation(
+    "Sync config loaded: Schema={Schema}, IntervalSeconds={IntervalSeconds}, MaxRowsPerTablePerCycle={MaxRowsPerTablePerCycle}",
+    syncOptions.Schema,
+    syncOptions.IntervalSeconds,
+    syncOptions.MaxRowsPerTablePerCycle);
+
 host.Run();
