@@ -26,6 +26,7 @@ import { Route as ApiPublicBiPushRouteImport } from './routes/api.public.bi.push
 import { Route as ApiPublicBiForceRefreshRouteImport } from './routes/api.public.bi.force-refresh'
 import { Route as ApiPublicAgentManifestRouteImport } from './routes/api.public.agent.manifest'
 import { Route as ApiPublicAgentIngestRouteImport } from './routes/api.public.agent.ingest'
+import { Route as ApiPublicAgentHeartbeatRouteImport } from './routes/api.public.agent.heartbeat'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -113,6 +114,11 @@ const ApiPublicAgentIngestRoute = ApiPublicAgentIngestRouteImport.update({
   path: '/api/public/agent/ingest',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicAgentHeartbeatRoute = ApiPublicAgentHeartbeatRouteImport.update({
+  id: '/api/public/agent/heartbeat',
+  path: '/api/public/agent/heartbeat',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -125,6 +131,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/settings': typeof DashboardSettingsRoute
   '/dashboard/tables': typeof DashboardTablesRoute
+  '/api/public/agent/heartbeat': typeof ApiPublicAgentHeartbeatRoute
   '/api/public/agent/ingest': typeof ApiPublicAgentIngestRoute
   '/api/public/agent/manifest': typeof ApiPublicAgentManifestRoute
   '/api/public/bi/force-refresh': typeof ApiPublicBiForceRefreshRoute
@@ -144,6 +151,7 @@ export interface FileRoutesByTo {
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/settings': typeof DashboardSettingsRoute
   '/dashboard/tables': typeof DashboardTablesRoute
+  '/api/public/agent/heartbeat': typeof ApiPublicAgentHeartbeatRoute
   '/api/public/agent/ingest': typeof ApiPublicAgentIngestRoute
   '/api/public/agent/manifest': typeof ApiPublicAgentManifestRoute
   '/api/public/bi/force-refresh': typeof ApiPublicBiForceRefreshRoute
@@ -164,6 +172,7 @@ export interface FileRoutesById {
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/settings': typeof DashboardSettingsRoute
   '/dashboard/tables': typeof DashboardTablesRoute
+  '/api/public/agent/heartbeat': typeof ApiPublicAgentHeartbeatRoute
   '/api/public/agent/ingest': typeof ApiPublicAgentIngestRoute
   '/api/public/agent/manifest': typeof ApiPublicAgentManifestRoute
   '/api/public/bi/force-refresh': typeof ApiPublicBiForceRefreshRoute
@@ -185,6 +194,7 @@ export interface FileRouteTypes {
     | '/dashboard/logs'
     | '/dashboard/settings'
     | '/dashboard/tables'
+    | '/api/public/agent/heartbeat'
     | '/api/public/agent/ingest'
     | '/api/public/agent/manifest'
     | '/api/public/bi/force-refresh'
@@ -204,6 +214,7 @@ export interface FileRouteTypes {
     | '/dashboard/logs'
     | '/dashboard/settings'
     | '/dashboard/tables'
+    | '/api/public/agent/heartbeat'
     | '/api/public/agent/ingest'
     | '/api/public/agent/manifest'
     | '/api/public/bi/force-refresh'
@@ -223,6 +234,7 @@ export interface FileRouteTypes {
     | '/dashboard/logs'
     | '/dashboard/settings'
     | '/dashboard/tables'
+    | '/api/public/agent/heartbeat'
     | '/api/public/agent/ingest'
     | '/api/public/agent/manifest'
     | '/api/public/bi/force-refresh'
@@ -236,6 +248,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DashboardRoute: typeof DashboardRouteWithChildren
   LoginRoute: typeof LoginRoute
+  ApiPublicAgentHeartbeatRoute: typeof ApiPublicAgentHeartbeatRoute
   ApiPublicAgentIngestRoute: typeof ApiPublicAgentIngestRoute
   ApiPublicAgentManifestRoute: typeof ApiPublicAgentManifestRoute
   ApiPublicBiForceRefreshRoute: typeof ApiPublicBiForceRefreshRoute
@@ -366,6 +379,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicAgentIngestRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/agent/heartbeat': {
+      id: '/api/public/agent/heartbeat'
+      path: '/api/public/agent/heartbeat'
+      fullPath: '/api/public/agent/heartbeat'
+      preLoaderRoute: typeof ApiPublicAgentHeartbeatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -397,6 +417,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashboardRoute: DashboardRouteWithChildren,
   LoginRoute: LoginRoute,
+  ApiPublicAgentHeartbeatRoute: ApiPublicAgentHeartbeatRoute,
   ApiPublicAgentIngestRoute: ApiPublicAgentIngestRoute,
   ApiPublicAgentManifestRoute: ApiPublicAgentManifestRoute,
   ApiPublicBiForceRefreshRoute: ApiPublicBiForceRefreshRoute,
