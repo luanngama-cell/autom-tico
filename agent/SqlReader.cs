@@ -17,12 +17,12 @@ public record TableInfo(
 
 public record TableSnapshot(
     TableInfo Table,
-    string Strategy,           // "rowversion" or "full_scan"
+    string Strategy,
     long RowCount,
-    string? LastChecksum,      // hex of MAX(rowversion) for incremental
+    string? LastChecksum,
     List<UpsertRow> Upserts,
     bool FullReplace,
-    List<Dictionary<string, object?>> AllPks);  // ALL live PKs in source (for reconciliation)
+    List<Dictionary<string, object?>> AllPks);
 
 public record UpsertRow(
     Dictionary<string, object?> Pk,
@@ -55,6 +55,7 @@ public class SqlReader
                 ConnectTimeout = _opts.ConnectTimeoutSeconds,
                 ApplicationName = "SqlSyncAgent",
             };
+
             if (string.Equals(_opts.AuthMode, "Windows", StringComparison.OrdinalIgnoreCase))
             {
                 b.IntegratedSecurity = true;
@@ -64,6 +65,7 @@ public class SqlReader
                 b.UserID = _opts.Username;
                 b.Password = _opts.Password;
             }
+
             return b.ConnectionString;
         }
     }
@@ -74,7 +76,6 @@ public class SqlReader
         await using var conn = new SqlConnection(ConnectionString);
         await conn.OpenAsync(ct);
 
-        // Tables in schema
         var sql = @"
 SELECT t.TABLE_SCHEMA, t.TABLE_NAME
 FROM INFORMATION_SCHEMA.TABLES t
@@ -113,13 +114,12 @@ ORDER BY kcu.ORDINAL_POSITION", conn))
                 while (await rd.ReadAsync(ct)) pks.Add(rd.GetString(0));
             }
 
-            // detect rowversion / timestamp column
             bool hasRv = false;
             await using (var cmd = new SqlCommand(@"
 SELECT COUNT(*) FROM sys.columns c
 JOIN sys.tables t ON t.object_id = c.object_id
 JOIN sys.schemas s ON s.schema_id = t.schema_id
-WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn)) // 189 = timestamp/rowversion
+WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn))
             {
                 cmd.Parameters.AddWithValue("@s", schema);
                 cmd.Parameters.AddWithValue("@t", table);
@@ -138,33 +138,25 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn)) // 189 = t
         return result;
     }
 
-    public async Task<TableSnapshot> ReadTableAsync(
-        TableInfo table,
-        string? lastChecksum,
-        CancellationToken ct)
+    public async Task<TableSnapshot> ReadTableAsync(TableInfo table, string? lastChecksum, CancellationToken ct)
     {
         await using var conn = new SqlConnection(ConnectionString);
         await conn.OpenAsync(ct);
 
-        // count
         long rowCount;
-        await using (var cmd = new SqlCommand(
-            $"SELECT COUNT_BIG(*) FROM [{table.SchemaName}].[{table.TableName}]", conn))
+        await using (var cmd = new SqlCommand($"SELECT COUNT_BIG(*) FROM [{table.SchemaName}].[{table.TableName}]", conn))
         {
             rowCount = (long)(await cmd.ExecuteScalarAsync(ct) ?? 0L);
         }
 
-        if (table.HasRowVersion)
-        {
-            return await ReadIncrementalAsync(conn, table, lastChecksum, rowCount, ct);
-        }
-        return await ReadFullScanAsync(conn, table, rowCount, ct);
+        return table.HasRowVersion
+            ? await ReadIncrementalAsync(conn, table, lastChecksum, rowCount, ct)
+            : await ReadFullScanAsync(conn, table, rowCount, ct);
     }
 
     private async Task<TableSnapshot> ReadIncrementalAsync(
         SqlConnection conn, TableInfo table, string? lastChecksum, long rowCount, CancellationToken ct)
     {
-        // find rowversion column name
         string rvCol;
         await using (var cmd = new SqlCommand(@"
 SELECT TOP 1 c.name FROM sys.columns c
@@ -177,37 +169,47 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn))
             rvCol = (string)(await cmd.ExecuteScalarAsync(ct) ?? "rv");
         }
 
-        byte[] minRv;
-        if (!string.IsNullOrEmpty(lastChecksum) && lastChecksum.Length == 16)
-        {
-            minRv = Convert.FromHexString(lastChecksum);
-        }
-        else
-        {
-            minRv = new byte[8]; // zero
-        }
+        var cursorRv = !string.IsNullOrEmpty(lastChecksum) && lastChecksum.Length == 16
+            ? Convert.FromHexString(lastChecksum)
+            : new byte[8];
 
         var upserts = new List<UpsertRow>();
         byte[]? maxRv = null;
-
         var top = _sync.MaxRowsPerTablePerCycle;
-        var sql = $"SELECT TOP ({top}) *, [{rvCol}] AS __rv FROM [{table.SchemaName}].[{table.TableName}] " +
-                  $"WHERE [{rvCol}] > @rv ORDER BY [{rvCol}] ASC";
 
-        await using (var qcmd = new SqlCommand(sql, conn) { CommandTimeout = 60 })
+        while (!ct.IsCancellationRequested)
         {
-            qcmd.Parameters.Add(new SqlParameter("@rv", SqlDbType.Timestamp) { Value = minRv });
+            var sql = $"SELECT TOP ({top}) *, [{rvCol}] AS __rv FROM [{table.SchemaName}].[{table.TableName}] " +
+                      $"WHERE [{rvCol}] > @rv ORDER BY [{rvCol}] ASC";
 
-            await using var rd = await qcmd.ExecuteReaderAsync(ct);
-            while (await rd.ReadAsync(ct))
+            var batchCount = 0;
+            byte[]? batchLastRv = null;
+
+            await using (var qcmd = new SqlCommand(sql, conn) { CommandTimeout = 120 })
             {
-                var (row, rv) = ReadRow(rd);
-                if (rv != null) maxRv = rv;
-                upserts.Add(BuildUpsert(table, row));
+                qcmd.Parameters.Add(new SqlParameter("@rv", SqlDbType.Timestamp) { Value = cursorRv });
+
+                await using var rd = await qcmd.ExecuteReaderAsync(ct);
+                while (await rd.ReadAsync(ct))
+                {
+                    var (row, rv) = ReadRow(rd);
+                    if (rv != null)
+                    {
+                        batchLastRv = rv;
+                        maxRv = rv;
+                    }
+
+                    upserts.Add(BuildUpsert(table, row));
+                    batchCount++;
+                }
             }
+
+            if (batchCount == 0 || batchLastRv == null) break;
+
+            cursorRv = batchLastRv;
+            if (batchCount < top) break;
         }
 
-        // Collect ALL live PKs for reconciliation (deletes propagation).
         var allPks = await ReadAllPksAsync(conn, table, ct);
 
         return new TableSnapshot(
@@ -225,25 +227,34 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn))
     {
         var upserts = new List<UpsertRow>();
         var top = _sync.MaxRowsPerTablePerCycle;
-        var sql = $"SELECT TOP ({top}) * FROM [{table.SchemaName}].[{table.TableName}]";
-        await using (var cmd = new SqlCommand(sql, conn) { CommandTimeout = 120 })
+        var orderBy = string.Join(", ", table.PrimaryKeys.Select(c => $"[{c}] ASC"));
+        var offset = 0L;
+
+        while (!ct.IsCancellationRequested)
         {
-            await using var rd = await cmd.ExecuteReaderAsync(ct);
-            while (await rd.ReadAsync(ct))
+            var sql = $"SELECT * FROM [{table.SchemaName}].[{table.TableName}] ORDER BY {orderBy} " +
+                      $"OFFSET {offset} ROWS FETCH NEXT {top} ROWS ONLY";
+
+            var batchCount = 0;
+            await using (var cmd = new SqlCommand(sql, conn) { CommandTimeout = 120 })
             {
-                var (row, _) = ReadRow(rd);
-                upserts.Add(BuildUpsert(table, row));
+                await using var rd = await cmd.ExecuteReaderAsync(ct);
+                while (await rd.ReadAsync(ct))
+                {
+                    var (row, _) = ReadRow(rd);
+                    upserts.Add(BuildUpsert(table, row));
+                    batchCount++;
+                }
             }
+
+            if (batchCount == 0) break;
+
+            offset += batchCount;
+            if (batchCount < top) break;
         }
 
-        // For full_scan tables that fit in one cycle, full_replace handles deletes.
-        // For larger ones, we still send all_pks so the server can reconcile.
-        var fullReplace = rowCount <= top;
-        var allPks = fullReplace
-            ? new List<Dictionary<string, object?>>()
-            : await ReadAllPksAsync(conn, table, ct);
-
-        return new TableSnapshot(table, "full_scan", rowCount, null, upserts, fullReplace, allPks);
+        var allPks = await ReadAllPksAsync(conn, table, ct);
+        return new TableSnapshot(table, "full_scan", rowCount, null, upserts, FullReplace: false, AllPks: allPks);
     }
 
     private async Task<List<Dictionary<string, object?>>> ReadAllPksAsync(
@@ -277,7 +288,11 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn))
             var name = rd.GetName(i);
             var val = rd.IsDBNull(i) ? null : rd.GetValue(i);
 
-            if (name == "__rv" && val is byte[] b) { rv = b; continue; }
+            if (name == "__rv" && val is byte[] b)
+            {
+                rv = b;
+                continue;
+            }
 
             dict[name] = NormalizeValue(val);
         }
@@ -307,7 +322,6 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn))
             pk[k] = v;
         }
 
-        // stable JSON: sorted keys
         var sorted = new SortedDictionary<string, object?>(row, StringComparer.Ordinal);
         var json = JsonSerializer.Serialize(sorted);
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json))).ToLowerInvariant();
