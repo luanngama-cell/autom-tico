@@ -21,10 +21,12 @@ export const Route = createFileRoute("/api/public/agent/manifest")({
         const expectedSecret = process.env.AGENT_INGEST_SECRET;
         if (!expectedSecret) return json({ error: "Server misconfigured" }, 500);
 
-        const a = Buffer.from(agentSecret);
-        const b = Buffer.from(expectedSecret);
-        if (a.length !== b.length || !timingSafeEqual(a, b)) {
-          return json({ error: "Invalid agent secret" }, 401);
+        if (agentSecret) {
+          const a = Buffer.from(agentSecret);
+          const b = Buffer.from(expectedSecret);
+          if (a.length !== b.length || !timingSafeEqual(a, b)) {
+            return json({ error: "Invalid agent secret" }, 401);
+          }
         }
 
         const bearer = auth.replace(/^Bearer\s+/i, "");
