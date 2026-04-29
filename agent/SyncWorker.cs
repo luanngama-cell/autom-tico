@@ -67,8 +67,6 @@ public class SyncWorker : BackgroundService
         var tables = await _reader.DiscoverTablesAsync(ct);
         _log.LogInformation("Discovered {Count} tables", tables.Count);
 
-        var payloadTables = new List<object>();
-        const int batchSize = 5;
         var sentTables = 0;
 
         foreach (var t in tables)
@@ -84,37 +82,15 @@ public class SyncWorker : BackgroundService
                     // nothing changed, but still report heartbeat
                 }
 
-                payloadTables.Add(new
+                var ok = await SendTableSnapshotAsync(t, snap, sentTables, tables.Count, ct);
+                if (!ok)
                 {
-                    schema_name = t.SchemaName,
-                    table_name = t.TableName,
-                    primary_keys = t.PrimaryKeys,
-                    has_rowversion = t.HasRowVersion,
-                    strategy = snap.Strategy,
-                    row_count = snap.RowCount,
-                    last_checksum = snap.LastChecksum ?? string.Empty,
-                    upserts = snap.Upserts.Select(u => new
-                    {
-                        pk = u.Pk,
-                        data = u.Data,
-                        row_hash = u.RowHash,
-                    }),
-                    full_replace = snap.FullReplace,
-                    all_pks = snap.AllPks,
-                });
-
-                if (payloadTables.Count >= batchSize)
-                {
-                    var ok = await SendBatchAsync(payloadTables, sentTables, tables.Count, ct);
-                    if (!ok)
-                    {
-                        _log.LogError("Batch failed, aborting cycle");
-                        return;
-                    }
-                    sentTables += payloadTables.Count;
-                    payloadTables.Clear();
-                    await _cloud.HeartbeatAsync(ct);
+                    _log.LogError("Table sync failed for {Schema}.{Table}, aborting cycle", t.SchemaName, t.TableName);
+                    return;
                 }
+
+                sentTables += 1;
+                await _cloud.HeartbeatAsync(ct);
             }
             catch (Exception ex)
             {
@@ -122,35 +98,64 @@ public class SyncWorker : BackgroundService
             }
         }
 
-        if (payloadTables.Count > 0)
-        {
-            var ok = await SendBatchAsync(payloadTables, sentTables, tables.Count, ct);
-            if (!ok)
-            {
-                _log.LogError("Final batch failed, aborting cycle");
-                return;
-            }
-            sentTables += payloadTables.Count;
-            payloadTables.Clear();
-        }
-
         await _cloud.HeartbeatAsync(ct);
         _log.LogInformation("Cycle done in {Ms}ms ({Count} tables sent)",
             (DateTime.UtcNow - started).TotalMilliseconds, sentTables);
     }
 
-    private async Task<bool> SendBatchAsync(List<object> batchTables, int sentTables, int totalTables, CancellationToken ct)
+    private async Task<bool> SendTableSnapshotAsync(TableInfo table, TableSnapshot snap, int sentTables, int totalTables, CancellationToken ct)
     {
-        var payload = new
+        var chunkSize = Math.Min(Math.Max(_sync.MaxRowsPerTablePerCycle, 1), 5000);
+        var upsertChunks = snap.Upserts.Chunk(chunkSize).ToArray();
+
+        if (upsertChunks.Length == 0)
         {
-            connection = new { status = "online" },
-            progress = new { sent = sentTables + batchTables.Count, total = totalTables },
-            tables = batchTables,
-        };
+            upsertChunks = new[] { Array.Empty<UpsertRow>() };
+        }
 
-        _log.LogInformation("Sending batch with {Count} tables ({Sent}/{Total})",
-            batchTables.Count, sentTables + batchTables.Count, totalTables);
+        for (var chunkIndex = 0; chunkIndex < upsertChunks.Length; chunkIndex++)
+        {
+            var chunk = upsertChunks[chunkIndex];
+            var isFinalChunk = chunkIndex == upsertChunks.Length - 1;
+            var payload = new
+            {
+                connection = new { status = "online" },
+                progress = new { sent = sentTables, total = totalTables },
+                tables = new[]
+                {
+                    new
+                    {
+                        schema_name = table.SchemaName,
+                        table_name = table.TableName,
+                        primary_keys = table.PrimaryKeys,
+                        has_rowversion = table.HasRowVersion,
+                        strategy = snap.Strategy,
+                        row_count = snap.RowCount,
+                        last_checksum = snap.LastChecksum ?? string.Empty,
+                        upserts = chunk.Select(u => new
+                        {
+                            pk = u.Pk,
+                            data = u.Data,
+                            row_hash = u.RowHash,
+                        }),
+                        full_replace = isFinalChunk && snap.FullReplace,
+                        all_pks = isFinalChunk ? snap.AllPks : null,
+                    }
+                },
+            };
 
-        return await _cloud.IngestAsync(payload, ct);
+            _log.LogInformation(
+                "Sending table {Schema}.{Table} chunk {Chunk}/{TotalChunks} ({Rows} rows)",
+                table.SchemaName,
+                table.TableName,
+                chunkIndex + 1,
+                upsertChunks.Length,
+                chunk.Length);
+
+            var ok = await _cloud.IngestAsync(payload, ct);
+            if (!ok) return false;
+        }
+
+        return true;
     }
 }

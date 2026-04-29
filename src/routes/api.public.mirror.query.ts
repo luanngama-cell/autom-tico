@@ -126,17 +126,22 @@ export const Route = createFileRoute("/api/public/mirror/query")({
         if (!syncTable.enabled)
           return json({ error: `Table ${schema}.${table} is disabled` }, 403);
 
-        // count separado (rápido, head:true), só quando solicitado
+        // total real da origem quando não há filtro incremental;
+        // para consultas incrementais, conta apenas as linhas alteradas.
         let total: number | null = null;
         if (includeTotal) {
-          let cq = supabaseAdmin
-            .from("synced_rows")
-            .select("pk", { count: "exact", head: true })
-            .eq("sync_table_id", syncTable.id);
-          if (updatedSince) cq = cq.gt("updated_at", updatedSince);
-          const { count: c, error: ce } = await cq;
-          if (ce) return json({ error: `count failed: ${ce.message}` }, 500);
-          total = c ?? null;
+          if (updatedSince) {
+            let cq = supabaseAdmin
+              .from("synced_rows")
+              .select("pk", { count: "exact", head: true })
+              .eq("sync_table_id", syncTable.id)
+              .gt("updated_at", updatedSince);
+            const { count: c, error: ce } = await cq;
+            if (ce) return json({ error: `count failed: ${ce.message}` }, 500);
+            total = c ?? null;
+          } else {
+            total = Number(syncTable.row_count ?? 0);
+          }
         }
 
         let q = supabaseAdmin
