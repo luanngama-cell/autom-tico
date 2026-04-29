@@ -166,7 +166,7 @@ function Overview() {
 
   useEffect(() => {
     load();
-    const i = setInterval(load, 60000);
+    const i = setInterval(load, 15000);
     return () => clearInterval(i);
   }, []);
 
@@ -186,7 +186,7 @@ function Overview() {
     );
   }
 
-  const { stats, connections, tableErrors, recentLogs, activity } = data;
+  const { stats, connections, tableErrors, recentLogs, activity, biDestinations, biStats } = data;
   const conn = connections[0];
   const lastSyncDate = stats.lastSync ? new Date(stats.lastSync) : null;
   const minutesAgo = lastSyncDate
@@ -194,13 +194,32 @@ function Overview() {
     : null;
   const maxBucket = Math.max(1, ...activity.map((a) => a.rows));
 
+  const formatAge = (ms: number | null) => {
+    if (ms === null) return "—";
+    if (ms < 60_000) return `${Math.floor(ms / 1000)}s`;
+    if (ms < 3_600_000) return `${Math.floor(ms / 60_000)} min`;
+    if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h`;
+    return `${Math.floor(ms / 86_400_000)}d`;
+  };
+
+  const connStatusLabel: Record<string, string> = {
+    online: "online",
+    stale: "atrasado",
+    offline: "offline",
+  };
+  const connStatusClass: Record<string, string> = {
+    online: "bg-emerald-500 animate-pulse",
+    stale: "bg-amber-500",
+    offline: "bg-destructive",
+  };
+
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Visão geral</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Atualizado automaticamente a cada 60 segundos.
+            Atualizado automaticamente a cada 15 segundos.
           </p>
         </div>
         <Button
@@ -223,21 +242,112 @@ function Overview() {
             <div
               className={cn(
                 "h-3 w-3 rounded-full",
-                conn.status === "online"
-                  ? "bg-emerald-500 animate-pulse"
-                  : "bg-muted-foreground"
+                connStatusClass[conn.effective_status] ?? "bg-muted-foreground"
               )}
             />
             <div>
               <div className="font-semibold">{conn.name}</div>
               <div className="text-xs text-muted-foreground">
                 {conn.host} · {conn.database_name}
+                {conn.age_ms !== null && (
+                  <span className="ml-2">
+                    · heartbeat há {formatAge(conn.age_ms)}
+                  </span>
+                )}
               </div>
             </div>
           </div>
-          <Badge variant={conn.status === "online" ? "default" : "secondary"}>
-            {conn.status}
+          <Badge
+            variant={
+              conn.effective_status === "online"
+                ? "default"
+                : conn.effective_status === "stale"
+                  ? "secondary"
+                  : "destructive"
+            }
+          >
+            {connStatusLabel[conn.effective_status] ?? conn.effective_status}
           </Badge>
+        </div>
+      )}
+
+      {/* BI Snapshots health */}
+      {biDestinations.length > 0 && (
+        <div className="rounded-lg border bg-card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Webhook className="h-4 w-4 text-muted-foreground" />
+              <h3 className="font-semibold text-sm">Saúde dos snapshots BI</h3>
+            </div>
+            <div className="flex gap-2 text-xs">
+              <Badge variant="default">{biStats.healthy} ok</Badge>
+              {biStats.degraded > 0 && (
+                <Badge variant="destructive">{biStats.degraded} com problema</Badge>
+              )}
+            </div>
+          </div>
+          <div className="space-y-2">
+            {biDestinations.map((d) => {
+              const tone =
+                d.health === "healthy"
+                  ? "bg-emerald-500"
+                  : d.health === "stale"
+                    ? "bg-amber-500"
+                    : d.health === "failing"
+                      ? "bg-destructive"
+                      : "bg-muted-foreground";
+              return (
+                <div
+                  key={d.id}
+                  className="flex items-center justify-between gap-3 rounded-md border p-3"
+                >
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className={cn("h-2.5 w-2.5 rounded-full shrink-0", tone)} />
+                    <div className="min-w-0">
+                      <div className="font-medium text-sm truncate">{d.name}</div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {d.last_snapshot_at
+                          ? `Snapshot há ${formatAge(d.snapshot_age_ms)}`
+                          : "Sem snapshot ainda"}
+                        {d.last_delivery && (
+                          <span className="ml-2">
+                            · última tentativa:{" "}
+                            {d.last_delivery.status}
+                            {d.last_delivery.http_status
+                              ? ` (HTTP ${d.last_delivery.http_status})`
+                              : ""}
+                          </span>
+                        )}
+                      </div>
+                      {(d.last_error || d.last_delivery?.error_message) && (
+                        <div className="text-xs text-destructive truncate mt-0.5">
+                          {d.last_delivery?.error_message ?? d.last_error}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <Badge
+                    variant={
+                      d.health === "healthy"
+                        ? "default"
+                        : d.health === "stale" || d.health === "failing"
+                          ? "destructive"
+                          : "secondary"
+                    }
+                    className="shrink-0"
+                  >
+                    {d.health === "healthy"
+                      ? "ok"
+                      : d.health === "stale"
+                        ? "desatualizado"
+                        : d.health === "failing"
+                          ? "falhando"
+                          : "sem dados"}
+                  </Badge>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
