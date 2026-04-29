@@ -142,12 +142,38 @@ if ($UpdateOnly -and (Test-Path (Join-Path $InstallDir "appsettings.json"))) {
 # 5. Instala NSSM se necessario e (re)registra o servico
 $nssm = Join-Path $InstallDir "nssm.exe"
 if (-not (Test-Path $nssm)) {
-  Info "Baixando NSSM..."
+  Info "Baixando NSSM (tentando varios mirrors)..."
   $zip = Join-Path $env:TEMP "nssm.zip"
-  Invoke-WebRequest -UseBasicParsing -Uri "https://nssm.cc/release/nssm-2.24.zip" -OutFile $zip
-  Expand-Archive $zip -DestinationPath (Join-Path $env:TEMP "nssm") -Force
-  Copy-Item (Join-Path $env:TEMP "nssm\nssm-2.24\win64\nssm.exe") $nssm -Force
+  $mirrors = @(
+    "https://web.archive.org/web/2024/https://nssm.cc/release/nssm-2.24.zip",
+    "https://packages.chocolatey.org/NSSM.2.24.0.20180307.nupkg",
+    "https://nssm.cc/release/nssm-2.24.zip"
+  )
+  $downloaded = $false
+  foreach ($url in $mirrors) {
+    try {
+      Info "  -> $url"
+      Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zip -TimeoutSec 60
+      if ((Get-Item $zip).Length -gt 100000) { $downloaded = $true; break }
+    } catch { Warn "Mirror falhou: $($_.Exception.Message)" }
+  }
+  if (-not $downloaded) { throw "Nao consegui baixar o NSSM de nenhum mirror." }
+
+  $extractDir = Join-Path $env:TEMP "nssm_extract"
+  if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force }
+  Expand-Archive $zip -DestinationPath $extractDir -Force
+
+  # Procura nssm.exe em qualquer subpasta (estrutura varia por mirror)
+  $found = Get-ChildItem -Path $extractDir -Recurse -Filter "nssm.exe" |
+           Where-Object { $_.FullName -match "win64|x64" } |
+           Select-Object -First 1
+  if (-not $found) {
+    $found = Get-ChildItem -Path $extractDir -Recurse -Filter "nssm.exe" | Select-Object -First 1
+  }
+  if (-not $found) { throw "nssm.exe nao encontrado dentro do pacote baixado." }
+  Copy-Item $found.FullName $nssm -Force
   Remove-Item $zip -Force
+  Remove-Item $extractDir -Recurse -Force
   Ok "NSSM instalado."
 }
 
