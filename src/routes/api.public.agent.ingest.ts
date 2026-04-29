@@ -76,6 +76,28 @@ function pkHash(connId: string, schema: string, table: string, pk: Record<string
   return sha256Hex(`${connId}::${schema}.${table}::${norm}`);
 }
 
+async function fetchAllExistingPkHashes(syncTableId: string) {
+  const hashes: string[] = [];
+  const pageSize = 1000;
+
+  for (let from = 0; ; from += pageSize) {
+    const to = from + pageSize - 1;
+    const { data, error } = await supabaseAdmin
+      .from("synced_rows")
+      .select("pk_hash")
+      .eq("sync_table_id", syncTableId)
+      .range(from, to);
+
+    if (error) throw error;
+
+    const page = (data ?? []).map((row) => row.pk_hash);
+    hashes.push(...page);
+    if (page.length < pageSize) break;
+  }
+
+  return hashes;
+}
+
 export const Route = createFileRoute("/api/public/agent/ingest")({
   server: {
     handlers: {
@@ -245,14 +267,9 @@ export const Route = createFileRoute("/api/public/agent/ingest")({
               );
               // Postgres .not('pk_hash','in', ...) — chunk to keep URL small
               // Strategy: fetch all existing pk_hashes, compute diff, delete in batches.
-              const { data: existingRows } = await supabaseAdmin
-                .from("synced_rows")
-                .select("pk_hash")
-                .eq("sync_table_id", syncTableId!);
+              const existingRows = await fetchAllExistingPkHashes(syncTableId!);
               const keepSet = new Set(keepHashes);
-              const toDelete = (existingRows ?? [])
-                .map((r) => r.pk_hash)
-                .filter((h) => !keepSet.has(h));
+              const toDelete = existingRows.filter((h) => !keepSet.has(h));
               const chunkSize = 500;
               for (let i = 0; i < toDelete.length; i += chunkSize) {
                 const chunk = toDelete.slice(i, i + chunkSize);
@@ -272,13 +289,8 @@ export const Route = createFileRoute("/api/public/agent/ingest")({
               const keepHashes = new Set(
                 t.all_pks.map((pk) => pkHash(connectionId, t.schema_name, t.table_name, pk))
               );
-              const { data: existingRows } = await supabaseAdmin
-                .from("synced_rows")
-                .select("pk_hash")
-                .eq("sync_table_id", syncTableId!);
-              const toDelete = (existingRows ?? [])
-                .map((r) => r.pk_hash)
-                .filter((h) => !keepHashes.has(h));
+              const existingRows = await fetchAllExistingPkHashes(syncTableId!);
+              const toDelete = existingRows.filter((h) => !keepHashes.has(h));
               const chunkSize = 500;
               for (let i = 0; i < toDelete.length; i += chunkSize) {
                 const chunk = toDelete.slice(i, i + chunkSize);
