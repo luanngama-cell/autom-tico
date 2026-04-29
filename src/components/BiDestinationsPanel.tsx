@@ -54,6 +54,22 @@ type Destination = {
   bi_script_id: string | null;
 };
 
+type Snapshot = {
+  destination_id: string;
+  generated_at: string;
+  updated_at: string;
+  payload_hash: string | null;
+};
+
+const STALE_THRESHOLD_MS = 30 * 60 * 1000; // 30 min
+
+function formatAge(ms: number): string {
+  if (ms < 60_000) return `${Math.floor(ms / 1000)}s`;
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)} min`;
+  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h`;
+  return `${Math.floor(ms / 86_400_000)}d`;
+}
+
 type ScriptOption = {
   id: string;
   name: string;
