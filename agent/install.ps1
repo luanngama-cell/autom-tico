@@ -97,6 +97,20 @@ Ok "Compilado em $publishDir"
 $cfgPath = Join-Path $publishDir "appsettings.json"
 if ($UpdateOnly -and (Test-Path (Join-Path $InstallDir "appsettings.json"))) {
   Copy-Item (Join-Path $InstallDir "appsettings.json") $cfgPath -Force
+  try {
+    $existingCfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
+    if ($null -eq $existingCfg.Sync) {
+      $existingCfg | Add-Member -NotePropertyName Sync -NotePropertyValue ([pscustomobject]@{})
+    }
+    if ($null -eq $existingCfg.Sync.MaxRowsPerTablePerCycle -or [int]$existingCfg.Sync.MaxRowsPerTablePerCycle -eq 5000) {
+      $existingCfg.Sync.MaxRowsPerTablePerCycle = 50000
+      ($existingCfg | ConvertTo-Json -Depth 10) | Set-Content -Encoding UTF8 $cfgPath
+      Copy-Item $cfgPath (Join-Path $InstallDir "appsettings.json") -Force
+      Ok "appsettings.json migrado: MaxRowsPerTablePerCycle=50000"
+    }
+  } catch {
+    Warn "Nao consegui migrar appsettings.json automaticamente: $($_.Exception.Message)"
+  }
   Ok "appsettings.json existente preservado."
 } else {
   if (-not $CloudBaseUrl) { throw "Faltou -CloudBaseUrl" }

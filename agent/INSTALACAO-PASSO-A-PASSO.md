@@ -139,7 +139,7 @@ Abra o arquivo `C:\sqlsync-agent\appsettings.json` no Bloco de Notas e ajuste pa
   "Sync": {
     "IntervalSeconds": 60,
     "Schema": "dbo",
-    "MaxRowsPerTablePerCycle": 5000,
+    "MaxRowsPerTablePerCycle": 50000,
     "ExcludedTables": []
   },
   "Bi": {

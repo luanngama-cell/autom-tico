@@ -139,13 +139,15 @@ public class SyncWorker : BackgroundService
                         has_rowversion = table.HasRowVersion,
                         strategy = snap.Strategy,
                         row_count = snap.RowCount,
-                        last_checksum = snap.LastChecksum ?? string.Empty,
+                        last_checksum = isFinalChunk ? snap.LastChecksum ?? string.Empty : null,
                         upserts = chunk.Select(u => new
                         {
                             pk = u.Pk,
                             data = u.Data,
                             row_hash = u.RowHash,
                         }),
+                        chunk_index = chunkIndex + 1,
+                        chunks_total = upsertChunks.Length,
                         full_replace = isFinalChunk && snap.FullReplace,
                         all_pks = isFinalChunk ? snap.AllPks : null,
                     }

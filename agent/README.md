@@ -42,7 +42,7 @@ dotnet publish -c Release -r win-x64 --self-contained true `
   "Sync": {
     "IntervalSeconds": 60,
     "Schema": "dbo",
-    "MaxRowsPerTablePerCycle": 5000,
+    "MaxRowsPerTablePerCycle": 50000,
     "ExcludedTables": []
   },
   "Bi": {
