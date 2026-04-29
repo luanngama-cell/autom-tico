@@ -25,7 +25,7 @@ public class SyncOptions
 {
     public int IntervalSeconds { get; set; } = 60;
     public string Schema { get; set; } = "dbo";
-    public int MaxRowsPerTablePerCycle { get; set; } = 5000;
+    public int MaxRowsPerTablePerCycle { get; set; } = 50000;
     public List<string> ExcludedTables { get; set; } = new();
 }
 
