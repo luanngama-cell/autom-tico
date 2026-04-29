@@ -21,6 +21,7 @@ import { Route as DashboardApisRouteImport } from './routes/dashboard.apis'
 import { Route as DashboardAgentRouteImport } from './routes/dashboard.agent'
 import { Route as ApiPublicMirrorTablesRouteImport } from './routes/api.public.mirror.tables'
 import { Route as ApiPublicMirrorQueryRouteImport } from './routes/api.public.mirror.query'
+import { Route as ApiPublicMirrorAllPksRouteImport } from './routes/api.public.mirror.all-pks'
 import { Route as ApiPublicMaintenanceCleanupLogsRouteImport } from './routes/api.public.maintenance.cleanup-logs'
 import { Route as ApiPublicBiSnapshotRouteImport } from './routes/api.public.bi.snapshot'
 import { Route as ApiPublicBiRunScriptsRouteImport } from './routes/api.public.bi.run-scripts'
@@ -90,6 +91,11 @@ const ApiPublicMirrorQueryRoute = ApiPublicMirrorQueryRouteImport.update({
   path: '/api/public/mirror/query',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicMirrorAllPksRoute = ApiPublicMirrorAllPksRouteImport.update({
+  id: '/api/public/mirror/all-pks',
+  path: '/api/public/mirror/all-pks',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicMaintenanceCleanupLogsRoute =
   ApiPublicMaintenanceCleanupLogsRouteImport.update({
     id: '/api/public/maintenance/cleanup-logs',
@@ -151,6 +157,7 @@ export interface FileRoutesByFullPath {
   '/api/public/bi/run-scripts': typeof ApiPublicBiRunScriptsRoute
   '/api/public/bi/snapshot': typeof ApiPublicBiSnapshotRoute
   '/api/public/maintenance/cleanup-logs': typeof ApiPublicMaintenanceCleanupLogsRoute
+  '/api/public/mirror/all-pks': typeof ApiPublicMirrorAllPksRoute
   '/api/public/mirror/query': typeof ApiPublicMirrorQueryRoute
   '/api/public/mirror/tables': typeof ApiPublicMirrorTablesRoute
 }
@@ -173,6 +180,7 @@ export interface FileRoutesByTo {
   '/api/public/bi/run-scripts': typeof ApiPublicBiRunScriptsRoute
   '/api/public/bi/snapshot': typeof ApiPublicBiSnapshotRoute
   '/api/public/maintenance/cleanup-logs': typeof ApiPublicMaintenanceCleanupLogsRoute
+  '/api/public/mirror/all-pks': typeof ApiPublicMirrorAllPksRoute
   '/api/public/mirror/query': typeof ApiPublicMirrorQueryRoute
   '/api/public/mirror/tables': typeof ApiPublicMirrorTablesRoute
 }
@@ -196,6 +204,7 @@ export interface FileRoutesById {
   '/api/public/bi/run-scripts': typeof ApiPublicBiRunScriptsRoute
   '/api/public/bi/snapshot': typeof ApiPublicBiSnapshotRoute
   '/api/public/maintenance/cleanup-logs': typeof ApiPublicMaintenanceCleanupLogsRoute
+  '/api/public/mirror/all-pks': typeof ApiPublicMirrorAllPksRoute
   '/api/public/mirror/query': typeof ApiPublicMirrorQueryRoute
   '/api/public/mirror/tables': typeof ApiPublicMirrorTablesRoute
 }
@@ -220,6 +229,7 @@ export interface FileRouteTypes {
     | '/api/public/bi/run-scripts'
     | '/api/public/bi/snapshot'
     | '/api/public/maintenance/cleanup-logs'
+    | '/api/public/mirror/all-pks'
     | '/api/public/mirror/query'
     | '/api/public/mirror/tables'
   fileRoutesByTo: FileRoutesByTo
@@ -242,6 +252,7 @@ export interface FileRouteTypes {
     | '/api/public/bi/run-scripts'
     | '/api/public/bi/snapshot'
     | '/api/public/maintenance/cleanup-logs'
+    | '/api/public/mirror/all-pks'
     | '/api/public/mirror/query'
     | '/api/public/mirror/tables'
   id:
@@ -264,6 +275,7 @@ export interface FileRouteTypes {
     | '/api/public/bi/run-scripts'
     | '/api/public/bi/snapshot'
     | '/api/public/maintenance/cleanup-logs'
+    | '/api/public/mirror/all-pks'
     | '/api/public/mirror/query'
     | '/api/public/mirror/tables'
   fileRoutesById: FileRoutesById
@@ -280,6 +292,7 @@ export interface RootRouteChildren {
   ApiPublicBiRunScriptsRoute: typeof ApiPublicBiRunScriptsRoute
   ApiPublicBiSnapshotRoute: typeof ApiPublicBiSnapshotRoute
   ApiPublicMaintenanceCleanupLogsRoute: typeof ApiPublicMaintenanceCleanupLogsRoute
+  ApiPublicMirrorAllPksRoute: typeof ApiPublicMirrorAllPksRoute
   ApiPublicMirrorQueryRoute: typeof ApiPublicMirrorQueryRoute
   ApiPublicMirrorTablesRoute: typeof ApiPublicMirrorTablesRoute
 }
@@ -368,6 +381,13 @@ declare module '@tanstack/react-router' {
       path: '/api/public/mirror/query'
       fullPath: '/api/public/mirror/query'
       preLoaderRoute: typeof ApiPublicMirrorQueryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/mirror/all-pks': {
+      id: '/api/public/mirror/all-pks'
+      path: '/api/public/mirror/all-pks'
+      fullPath: '/api/public/mirror/all-pks'
+      preLoaderRoute: typeof ApiPublicMirrorAllPksRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/maintenance/cleanup-logs': {
@@ -465,6 +485,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicBiRunScriptsRoute: ApiPublicBiRunScriptsRoute,
   ApiPublicBiSnapshotRoute: ApiPublicBiSnapshotRoute,
   ApiPublicMaintenanceCleanupLogsRoute: ApiPublicMaintenanceCleanupLogsRoute,
+  ApiPublicMirrorAllPksRoute: ApiPublicMirrorAllPksRoute,
   ApiPublicMirrorQueryRoute: ApiPublicMirrorQueryRoute,
   ApiPublicMirrorTablesRoute: ApiPublicMirrorTablesRoute,
 }
