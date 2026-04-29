@@ -15,7 +15,7 @@
 #    powershell -ExecutionPolicy Bypass -File .\install.ps1 -UpdateOnly
 #
 #  Requisitos: Windows Server, internet, permissao de Administrador.
-#  O proprio script instala (se faltar): git, .NET 8 SDK e NSSM.
+#  O proprio script instala (se faltar): git e .NET 8 SDK.
 # ============================================================
 
 [CmdletBinding()]
@@ -139,44 +139,7 @@ if ($UpdateOnly -and (Test-Path (Join-Path $InstallDir "appsettings.json"))) {
   Ok "appsettings.json gerado."
 }
 
-# 5. Instala NSSM se necessario e (re)registra o servico
-$nssm = Join-Path $InstallDir "nssm.exe"
-if (-not (Test-Path $nssm)) {
-  Info "Baixando NSSM (tentando varios mirrors)..."
-  $zip = Join-Path $env:TEMP "nssm.zip"
-  $mirrors = @(
-    "https://web.archive.org/web/2024/https://nssm.cc/release/nssm-2.24.zip",
-    "https://packages.chocolatey.org/NSSM.2.24.0.20180307.nupkg",
-    "https://nssm.cc/release/nssm-2.24.zip"
-  )
-  $downloaded = $false
-  foreach ($url in $mirrors) {
-    try {
-      Info "  -> $url"
-      Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zip -TimeoutSec 60
-      if ((Get-Item $zip).Length -gt 100000) { $downloaded = $true; break }
-    } catch { Warn "Mirror falhou: $($_.Exception.Message)" }
-  }
-  if (-not $downloaded) { throw "Nao consegui baixar o NSSM de nenhum mirror." }
-
-  $extractDir = Join-Path $env:TEMP "nssm_extract"
-  if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force }
-  Expand-Archive $zip -DestinationPath $extractDir -Force
-
-  # Procura nssm.exe em qualquer subpasta (estrutura varia por mirror)
-  $found = Get-ChildItem -Path $extractDir -Recurse -Filter "nssm.exe" |
-           Where-Object { $_.FullName -match "win64|x64" } |
-           Select-Object -First 1
-  if (-not $found) {
-    $found = Get-ChildItem -Path $extractDir -Recurse -Filter "nssm.exe" | Select-Object -First 1
-  }
-  if (-not $found) { throw "nssm.exe nao encontrado dentro do pacote baixado." }
-  Copy-Item $found.FullName $nssm -Force
-  Remove-Item $zip -Force
-  Remove-Item $extractDir -Recurse -Force
-  Ok "NSSM instalado."
-}
-
+# 5. Registra o servico usando o Service Control Manager nativo do Windows
 $exe = Join-Path $publishDir "SqlSyncAgent.exe"
 if (-not (Test-Path $exe)) {
   # publish gera dll - usar dotnet como host
@@ -186,30 +149,42 @@ if (-not (Test-Path $exe)) {
   $exeArgs = ""
 }
 
+$serviceBinPath = if ($exeArgs) {
+  "`"$exe`" $exeArgs"
+} else {
+  "`"$exe`""
+}
+
 # Para servico se ja existir
-$existing = & $nssm status $ServiceName 2>$null
-if ($LASTEXITCODE -eq 0) {
+$existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+if ($existing) {
   Info "Parando servico existente..."
-  & $nssm stop $ServiceName confirm | Out-Null
-  & $nssm remove $ServiceName confirm | Out-Null
+  try {
+    Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
+  } catch {
+    Warn "Nao consegui parar o servico de imediato: $($_.Exception.Message)"
+  }
+  sc.exe delete $ServiceName | Out-Null
+  for ($i = 0; $i -lt 30; $i++) {
+    if (-not (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue)) { break }
+    Start-Sleep -Seconds 1
+  }
 }
 
 Info "Registrando servico Windows '$ServiceName'..."
-& $nssm install $ServiceName $exe $exeArgs | Out-Null
-& $nssm set $ServiceName AppDirectory $publishDir | Out-Null
-& $nssm set $ServiceName AppStdout (Join-Path $InstallDir "agent.out.log") | Out-Null
-& $nssm set $ServiceName AppStderr (Join-Path $InstallDir "agent.err.log") | Out-Null
-& $nssm set $ServiceName AppRotateFiles 1 | Out-Null
-& $nssm set $ServiceName AppRotateBytes 10485760 | Out-Null
-& $nssm set $ServiceName Start SERVICE_AUTO_START | Out-Null
-& $nssm set $ServiceName AppExit Default Restart | Out-Null
-& $nssm set $ServiceName AppRestartDelay 5000 | Out-Null
-& $nssm set $ServiceName Description "Espelho SQL Server -> Lovable Cloud (sincroniza 100% das tabelas)" | Out-Null
+sc.exe create $ServiceName binPath= $serviceBinPath start= auto | Out-Null
+sc.exe description $ServiceName "Espelho SQL Server -> Lovable Cloud (sincroniza 100% das tabelas)" | Out-Null
+sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/5000/restart/5000 | Out-Null
+sc.exe failureflag $ServiceName 1 | Out-Null
 
 Info "Iniciando servico..."
-& $nssm start $ServiceName | Out-Null
-Start-Sleep -Seconds 3
-& $nssm status $ServiceName
+Start-Service -Name $ServiceName
+for ($i = 0; $i -lt 15; $i++) {
+  $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+  if ($svc -and $svc.Status -eq "Running") { break }
+  Start-Sleep -Seconds 1
+}
+Get-Service -Name $ServiceName
 
-Ok "Concluido. Logs em: $InstallDir\agent.out.log e agent.err.log"
+Ok "Concluido. Logs em: $publishDir\agent.log"
 Ok "Para atualizar futuramente:  powershell -ExecutionPolicy Bypass -File .\install.ps1 -UpdateOnly"
