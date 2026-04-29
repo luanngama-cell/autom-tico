@@ -42,6 +42,20 @@ public class CloudClient
         return JsonDocument.Parse(body);
     }
 
+    public async Task<bool> HeartbeatAsync(CancellationToken ct)
+    {
+        using var c = Client();
+        using var res = await c.PostAsJsonAsync("api/public/agent/heartbeat", new { status = "online" }, ct);
+        var body = await res.Content.ReadAsStringAsync(ct);
+        if (!res.IsSuccessStatusCode)
+        {
+            _log.LogWarning("Heartbeat failed {Status}: {Body}", (int)res.StatusCode, body);
+            return false;
+        }
+        _log.LogDebug("Heartbeat ok: {Body}", body);
+        return true;
+    }
+
     public async Task<bool> IngestAsync(object payload, CancellationToken ct)
     {
         using var c = Client();
