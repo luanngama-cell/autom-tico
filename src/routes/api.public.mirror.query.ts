@@ -107,6 +107,9 @@ export const Route = createFileRoute("/api/public/mirror/query")({
         );
         const offset = Math.max(0, parseInt(url.searchParams.get("offset") ?? "0", 10) || 0);
         const updatedSince = url.searchParams.get("updated_since");
+        const afterPk = url.searchParams.get("after_pk"); // keyset pagination (recomendado para tabelas grandes)
+        const orderBy = (url.searchParams.get("order") ?? "pk").toLowerCase() === "updated_at" ? "updated_at" : "pk";
+        const includeTotal = url.searchParams.get("include_total") !== "false"; // default true
 
         if (!table) return json({ error: "Missing 'table' query param" }, 400);
 
@@ -123,28 +126,53 @@ export const Route = createFileRoute("/api/public/mirror/query")({
         if (!syncTable.enabled)
           return json({ error: `Table ${schema}.${table} is disabled` }, 403);
 
+        // count separado (rápido, head:true), só quando solicitado
+        let total: number | null = null;
+        if (includeTotal) {
+          let cq = supabaseAdmin
+            .from("synced_rows")
+            .select("pk", { count: "exact", head: true })
+            .eq("sync_table_id", syncTable.id);
+          if (updatedSince) cq = cq.gt("updated_at", updatedSince);
+          const { count: c, error: ce } = await cq;
+          if (ce) return json({ error: `count failed: ${ce.message}` }, 500);
+          total = c ?? null;
+        }
+
         let q = supabaseAdmin
           .from("synced_rows")
-          .select("data, pk, updated_at", { count: "exact" })
+          .select("data, pk, updated_at")
           .eq("sync_table_id", syncTable.id)
-          .order("updated_at", { ascending: false })
-          .range(offset, offset + limit - 1);
+          .order(orderBy, { ascending: orderBy === "pk" });
 
         if (updatedSince) q = q.gt("updated_at", updatedSince);
 
-        const { data, count, error } = await q;
+        // keyset (preferido para varreduras completas e tabelas > 5k)
+        if (afterPk && orderBy === "pk") {
+          q = q.gt("pk", afterPk).limit(limit);
+        } else {
+          q = q.range(offset, offset + limit - 1);
+        }
+
+        const { data, error } = await q;
         if (error) return json({ error: error.message }, 500);
+
+        const rows = data ?? [];
+        const nextAfterPk =
+          orderBy === "pk" && rows.length === limit ? rows[rows.length - 1].pk : null;
 
         return json({
           table: { schema, name: table, full_name: `${schema}.${table}` },
           primary_keys: syncTable.primary_keys,
           row_count_total: syncTable.row_count,
           last_synced_at: syncTable.last_synced_at,
-          count: data?.length ?? 0,
-          total: count ?? null,
+          count: rows.length,
+          total,
           limit,
           offset,
-          rows: (data ?? []).map((r) => ({
+          order: orderBy,
+          next_after_pk: nextAfterPk,
+          rows: rows.map((r) => ({
             ...((r.data as Record<string, unknown>) ?? {}),
             __pk: r.pk,
             __updated_at: r.updated_at,
