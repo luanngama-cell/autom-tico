@@ -435,14 +435,76 @@ function DestinationDetail({
   tokens,
   deliveries,
   scripts,
+  snapshot,
   onChange,
 }: {
   destination: Destination;
   tokens: Token[];
   deliveries: Delivery[];
   scripts: ScriptOption[];
+  snapshot: Snapshot | null;
   onChange: () => void;
 }) {
+  const [forcing, setForcing] = useState(false);
+  const autoTriggeredRef = useRef<string | null>(null);
+
+  const ageMs = snapshot ? Date.now() - new Date(snapshot.updated_at).getTime() : null;
+  const isStale = ageMs !== null && ageMs > STALE_THRESHOLD_MS;
+
+  const forceRefresh = async (auto = false) => {
+    setForcing(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        toast.error("Sessão expirada — faça login novamente");
+        return;
+      }
+      const res = await fetch("/api/public/bi/force-refresh", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ destination_id: destination.id }),
+      });
+      const body = (await res.json()) as {
+        ok?: boolean;
+        reason?: string;
+        message?: string;
+        error?: string;
+        run_result?: unknown;
+      };
+      if (res.ok && body.ok) {
+        toast.success(auto ? "Snapshot atualizado automaticamente" : "Snapshot atualizado");
+        onChange();
+      } else if (res.status === 409 && body.reason === "no_script_linked") {
+        toast.warning(body.message ?? "Sem script vinculado", { duration: 8000 });
+      } else {
+        toast.error(body.error ?? body.message ?? `Falha (HTTP ${res.status})`);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro inesperado");
+    } finally {
+      setForcing(false);
+    }
+  };
+
+  // Auto-trigger 1x por destino quando snapshot está parado >30min e há script vinculado
+  useEffect(() => {
+    if (
+      isStale &&
+      destination.enabled &&
+      destination.bi_script_id &&
+      autoTriggeredRef.current !== destination.id &&
+      !forcing
+    ) {
+      autoTriggeredRef.current = destination.id;
+      forceRefresh(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [destination.id, isStale, destination.enabled, destination.bi_script_id]);
+
   const toggleEnabled = async () => {
     await supabase
       .from("bi_destinations")
