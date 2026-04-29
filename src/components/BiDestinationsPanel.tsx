@@ -250,6 +250,7 @@ export function BiDestinationsPanel() {
                 tokens={selectedTokens}
                 deliveries={selectedDeliveries}
                 scripts={scripts}
+                snapshot={snapshots.find((s) => s.destination_id === selectedDest.id) ?? null}
                 onChange={load}
               />
             ) : (
