@@ -48,6 +48,8 @@ public class SyncWorker : BackgroundService
         var started = DateTime.UtcNow;
         _log.LogInformation("Cycle start");
 
+        await _cloud.HeartbeatAsync(ct);
+
         // 1. Get manifest (last_checksum per known table)
         var manifest = await _cloud.GetManifestAsync(ct);
         var lastChecksums = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
@@ -66,6 +68,8 @@ public class SyncWorker : BackgroundService
         _log.LogInformation("Discovered {Count} tables", tables.Count);
 
         var payloadTables = new List<object>();
+        const int batchSize = 5;
+        var sentTables = 0;
 
         foreach (var t in tables)
         {
@@ -98,6 +102,19 @@ public class SyncWorker : BackgroundService
                     full_replace = snap.FullReplace,
                     all_pks = snap.AllPks,
                 });
+
+                if (payloadTables.Count >= batchSize)
+                {
+                    var ok = await SendBatchAsync(payloadTables, sentTables, tables.Count, ct);
+                    if (!ok)
+                    {
+                        _log.LogError("Batch failed, aborting cycle");
+                        return;
+                    }
+                    sentTables += payloadTables.Count;
+                    payloadTables.Clear();
+                    await _cloud.HeartbeatAsync(ct);
+                }
             }
             catch (Exception ex)
             {
@@ -105,35 +122,35 @@ public class SyncWorker : BackgroundService
             }
         }
 
-        // Send in batches to stay under Cloudflare's 100MB request limit and avoid 502 timeouts.
-        const int batchSize = 5;
-        var totalBatches = (int)Math.Ceiling(payloadTables.Count / (double)batchSize);
-        var batchIndex = 0;
-
-        for (int i = 0; i < payloadTables.Count; i += batchSize)
+        if (payloadTables.Count > 0)
         {
-            batchIndex++;
-            var chunk = payloadTables.GetRange(i, Math.Min(batchSize, payloadTables.Count - i));
-
-            var payload = new
-            {
-                connection = new { status = "online" },
-                batch = new { index = batchIndex, total = totalBatches },
-                tables = chunk,
-            };
-
-            _log.LogInformation("Sending batch {Index}/{Total} ({Count} tables)",
-                batchIndex, totalBatches, chunk.Count);
-
-            var ok = await _cloud.IngestAsync(payload, ct);
+            var ok = await SendBatchAsync(payloadTables, sentTables, tables.Count, ct);
             if (!ok)
             {
-                _log.LogError("Batch {Index}/{Total} failed, aborting cycle", batchIndex, totalBatches);
-                break;
+                _log.LogError("Final batch failed, aborting cycle");
+                return;
             }
+            sentTables += payloadTables.Count;
+            payloadTables.Clear();
         }
 
-        _log.LogInformation("Cycle done in {Ms}ms ({Count} tables in {Batches} batches)",
-            (DateTime.UtcNow - started).TotalMilliseconds, payloadTables.Count, totalBatches);
+        await _cloud.HeartbeatAsync(ct);
+        _log.LogInformation("Cycle done in {Ms}ms ({Count} tables sent)",
+            (DateTime.UtcNow - started).TotalMilliseconds, sentTables);
+    }
+
+    private async Task<bool> SendBatchAsync(List<object> batchTables, int sentTables, int totalTables, CancellationToken ct)
+    {
+        var payload = new
+        {
+            connection = new { status = "online" },
+            progress = new { sent = sentTables + batchTables.Count, total = totalTables },
+            tables = batchTables,
+        };
+
+        _log.LogInformation("Sending batch with {Count} tables ({Sent}/{Total})",
+            batchTables.Count, sentTables + batchTables.Count, totalTables);
+
+        return await _cloud.IngestAsync(payload, ct);
     }
 }
