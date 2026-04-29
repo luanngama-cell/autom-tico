@@ -115,11 +115,12 @@ export function BiDestinationsPanel() {
   const [tokens, setTokens] = useState<Token[]>([]);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [scripts, setScripts] = useState<ScriptOption[]>([]);
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
 
   const load = async () => {
-    const [d, t, dl, s] = await Promise.all([
+    const [d, t, dl, s, sn] = await Promise.all([
       supabase.from("bi_destinations").select("*").order("created_at", { ascending: false }),
       supabase.from("bi_destination_tokens").select("*").order("created_at", { ascending: false }),
       supabase
@@ -131,11 +132,15 @@ export function BiDestinationsPanel() {
         .from("bi_scripts")
         .select("id, name, enabled")
         .order("name", { ascending: true }),
+      supabase
+        .from("bi_snapshots")
+        .select("destination_id, generated_at, updated_at, payload_hash"),
     ]);
     setDestinations((d.data as Destination[]) ?? []);
     setTokens((t.data as Token[]) ?? []);
     setDeliveries((dl.data as Delivery[]) ?? []);
     setScripts((s.data as ScriptOption[]) ?? []);
+    setSnapshots((sn.data as Snapshot[]) ?? []);
     setLoading(false);
   };
 
