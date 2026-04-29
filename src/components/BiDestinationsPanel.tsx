@@ -191,19 +191,27 @@ export function BiDestinationsPanel() {
             {destinations.map((d) => {
               const active = selected === d.id;
               const status = d.last_status;
+              const snap = snapshots.find((s) => s.destination_id === d.id);
+              const ageMs = snap ? Date.now() - new Date(snap.updated_at).getTime() : null;
+              const isStale = ageMs !== null && ageMs > STALE_THRESHOLD_MS;
               return (
                 <button
                   key={d.id}
                   onClick={() => setSelected(d.id)}
-                  className={`w-full rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/50 ${active ? "border-primary ring-1 ring-primary" : ""}`}
+                  className={`w-full rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/50 ${active ? "border-primary ring-1 ring-primary" : ""} ${isStale ? "border-destructive/40" : ""}`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold truncate">{d.name}</span>
                         {!d.enabled && (
                           <Badge variant="secondary" className="text-xs">
                             Pausado
+                          </Badge>
+                        )}
+                        {isStale && (
+                          <Badge variant="destructive" className="text-xs">
+                            Desatualizado {ageMs ? `(${formatAge(ageMs)})` : ""}
                           </Badge>
                         )}
                       </div>
@@ -211,19 +219,21 @@ export function BiDestinationsPanel() {
                         {d.endpoint_url}
                       </div>
                     </div>
-                    {status === "success" ? (
+                    {isStale ? (
+                      <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />
+                    ) : status === "success" || status === "pull_only" ? (
                       <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
-                    ) : status === "error" ? (
+                    ) : status === "error" || status === "failed" ? (
                       <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />
                     ) : (
                       <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
                     )}
                   </div>
-                  <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
+                  <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                     <span>A cada {d.push_interval_minutes} min</span>
-                    {d.last_pushed_at && (
+                    {snap && (
                       <span>
-                        · último: {new Date(d.last_pushed_at).toLocaleString("pt-BR")}
+                        · snapshot: {new Date(snap.updated_at).toLocaleString("pt-BR")}
                       </span>
                     )}
                   </div>
