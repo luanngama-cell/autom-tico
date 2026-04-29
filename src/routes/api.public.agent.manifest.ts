@@ -42,6 +42,18 @@ export const Route = createFileRoute("/api/public/agent/manifest")({
           .maybeSingle();
         if (!tokenRow || tokenRow.revoked_at) return json({ error: "Unauthorized" }, 401);
 
+        const now = new Date().toISOString();
+        await Promise.all([
+          supabaseAdmin
+            .from("sql_connections")
+            .update({ status: "online", last_seen_at: now })
+            .eq("id", connectionId),
+          supabaseAdmin
+            .from("agent_tokens")
+            .update({ last_used_at: now })
+            .eq("id", tokenRow.id),
+        ]);
+
         const { data: conn } = await supabaseAdmin
           .from("sql_connections")
           .select("id, name, host, port, database_name, username, encrypt, trust_server_cert")
