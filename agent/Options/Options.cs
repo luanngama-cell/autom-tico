@@ -29,6 +29,12 @@ public class SyncOptions
     public List<string> ExcludedTables { get; set; } = new();
 }
 
+public class MemoryOptions
+{
+    /// <summary>Percentual máximo da RAM física que o agente pode usar (10–90). Default: 50%.</summary>
+    public int MaxPercentOfTotalRam { get; set; } = 50;
+}
+
 public class BiOptions
 {
     /// <summary>Habilita execução periódica do script BI e push do snapshot.</summary>

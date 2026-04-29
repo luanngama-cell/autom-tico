@@ -27,11 +27,16 @@ Log.Logger = new LoggerConfiguration()
 builder.Logging.ClearProviders();
 builder.Logging.AddSerilog(Log.Logger);
 
+// Memory cap (Windows Job Object) — aplicado o quanto antes no startup.
+var memoryOptions = builder.Configuration.GetSection("Memory").Get<MemoryOptions>() ?? new MemoryOptions();
+MemoryGuard.Apply(memoryOptions, new Serilog.Extensions.Logging.SerilogLoggerFactory(Log.Logger).CreateLogger("MemoryGuard"));
+
 // Options
 builder.Services.Configure<CloudOptions>(builder.Configuration.GetSection("Cloud"));
 builder.Services.Configure<SqlOptions>(builder.Configuration.GetSection("Sql"));
 builder.Services.Configure<SyncOptions>(builder.Configuration.GetSection("Sync"));
 builder.Services.Configure<BiOptions>(builder.Configuration.GetSection("Bi"));
+builder.Services.Configure<MemoryOptions>(builder.Configuration.GetSection("Memory"));
 
 builder.Services.AddHttpClient("cloud", (sp, client) =>
 {
