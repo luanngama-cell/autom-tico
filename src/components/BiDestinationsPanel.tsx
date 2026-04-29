@@ -587,6 +587,51 @@ function DestinationDetail({
             </Button>
           </div>
         </div>
+
+        {/* Status do snapshot */}
+        <div className="mt-4 rounded-md border bg-muted/30 p-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="text-xs">
+              <div className="font-medium text-foreground">Snapshot atual</div>
+              {snapshot ? (
+                <div className="mt-1 text-muted-foreground">
+                  Atualizado em {new Date(snapshot.updated_at).toLocaleString("pt-BR")}
+                  {ageMs !== null && (
+                    <span className={isStale ? "text-destructive font-medium ml-1" : "ml-1"}>
+                      ({formatAge(ageMs)} atrás)
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div className="mt-1 text-muted-foreground">
+                  Nenhum snapshot gerado ainda.
+                </div>
+              )}
+            </div>
+            <Button
+              size="sm"
+              variant={isStale ? "default" : "outline"}
+              onClick={() => forceRefresh(false)}
+              disabled={forcing}
+            >
+              {forcing ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              Forçar atualização agora
+            </Button>
+          </div>
+          {isStale && (
+            <div className="mt-2 rounded border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
+              <span className="font-medium">⚠ Snapshot desatualizado.</span>{" "}
+              {destination.bi_script_id
+                ? "Tentando regenerar automaticamente a partir do script vinculado…"
+                : "Sem script vinculado — depende do agente local (Windows). Verifique se o serviço SqlSyncAgent está rodando."}
+            </div>
+          )}
+        </div>
+
         {destination.last_error && (
           <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
             <span className="font-medium">Último erro:</span> {destination.last_error}
