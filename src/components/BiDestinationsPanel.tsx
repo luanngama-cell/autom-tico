@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,6 +54,22 @@ type Destination = {
   bi_script_id: string | null;
 };
 
+type Snapshot = {
+  destination_id: string;
+  generated_at: string;
+  updated_at: string;
+  payload_hash: string | null;
+};
+
+const STALE_THRESHOLD_MS = 30 * 60 * 1000; // 30 min
+
+function formatAge(ms: number): string {
+  if (ms < 60_000) return `${Math.floor(ms / 1000)}s`;
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)} min`;
+  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h`;
+  return `${Math.floor(ms / 86_400_000)}d`;
+}
+
 type ScriptOption = {
   id: string;
   name: string;
@@ -99,11 +115,12 @@ export function BiDestinationsPanel() {
   const [tokens, setTokens] = useState<Token[]>([]);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [scripts, setScripts] = useState<ScriptOption[]>([]);
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
 
   const load = async () => {
-    const [d, t, dl, s] = await Promise.all([
+    const [d, t, dl, s, sn] = await Promise.all([
       supabase.from("bi_destinations").select("*").order("created_at", { ascending: false }),
       supabase.from("bi_destination_tokens").select("*").order("created_at", { ascending: false }),
       supabase
@@ -115,11 +132,15 @@ export function BiDestinationsPanel() {
         .from("bi_scripts")
         .select("id, name, enabled")
         .order("name", { ascending: true }),
+      supabase
+        .from("bi_snapshots")
+        .select("destination_id, generated_at, updated_at, payload_hash"),
     ]);
     setDestinations((d.data as Destination[]) ?? []);
     setTokens((t.data as Token[]) ?? []);
     setDeliveries((dl.data as Delivery[]) ?? []);
     setScripts((s.data as ScriptOption[]) ?? []);
+    setSnapshots((sn.data as Snapshot[]) ?? []);
     setLoading(false);
   };
 
@@ -170,19 +191,27 @@ export function BiDestinationsPanel() {
             {destinations.map((d) => {
               const active = selected === d.id;
               const status = d.last_status;
+              const snap = snapshots.find((s) => s.destination_id === d.id);
+              const ageMs = snap ? Date.now() - new Date(snap.updated_at).getTime() : null;
+              const isStale = ageMs !== null && ageMs > STALE_THRESHOLD_MS;
               return (
                 <button
                   key={d.id}
                   onClick={() => setSelected(d.id)}
-                  className={`w-full rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/50 ${active ? "border-primary ring-1 ring-primary" : ""}`}
+                  className={`w-full rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/50 ${active ? "border-primary ring-1 ring-primary" : ""} ${isStale ? "border-destructive/40" : ""}`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold truncate">{d.name}</span>
                         {!d.enabled && (
                           <Badge variant="secondary" className="text-xs">
                             Pausado
+                          </Badge>
+                        )}
+                        {isStale && (
+                          <Badge variant="destructive" className="text-xs">
+                            Desatualizado {ageMs ? `(${formatAge(ageMs)})` : ""}
                           </Badge>
                         )}
                       </div>
@@ -190,19 +219,21 @@ export function BiDestinationsPanel() {
                         {d.endpoint_url}
                       </div>
                     </div>
-                    {status === "success" ? (
+                    {isStale ? (
+                      <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />
+                    ) : status === "success" || status === "pull_only" ? (
                       <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
-                    ) : status === "error" ? (
+                    ) : status === "error" || status === "failed" ? (
                       <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />
                     ) : (
                       <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
                     )}
                   </div>
-                  <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
+                  <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                     <span>A cada {d.push_interval_minutes} min</span>
-                    {d.last_pushed_at && (
+                    {snap && (
                       <span>
-                        · último: {new Date(d.last_pushed_at).toLocaleString("pt-BR")}
+                        · snapshot: {new Date(snap.updated_at).toLocaleString("pt-BR")}
                       </span>
                     )}
                   </div>
@@ -219,6 +250,7 @@ export function BiDestinationsPanel() {
                 tokens={selectedTokens}
                 deliveries={selectedDeliveries}
                 scripts={scripts}
+                snapshot={snapshots.find((s) => s.destination_id === selectedDest.id) ?? null}
                 onChange={load}
               />
             ) : (
@@ -403,14 +435,76 @@ function DestinationDetail({
   tokens,
   deliveries,
   scripts,
+  snapshot,
   onChange,
 }: {
   destination: Destination;
   tokens: Token[];
   deliveries: Delivery[];
   scripts: ScriptOption[];
+  snapshot: Snapshot | null;
   onChange: () => void;
 }) {
+  const [forcing, setForcing] = useState(false);
+  const autoTriggeredRef = useRef<string | null>(null);
+
+  const ageMs = snapshot ? Date.now() - new Date(snapshot.updated_at).getTime() : null;
+  const isStale = ageMs !== null && ageMs > STALE_THRESHOLD_MS;
+
+  const forceRefresh = async (auto = false) => {
+    setForcing(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        toast.error("Sessão expirada — faça login novamente");
+        return;
+      }
+      const res = await fetch("/api/public/bi/force-refresh", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ destination_id: destination.id }),
+      });
+      const body = (await res.json()) as {
+        ok?: boolean;
+        reason?: string;
+        message?: string;
+        error?: string;
+        run_result?: unknown;
+      };
+      if (res.ok && body.ok) {
+        toast.success(auto ? "Snapshot atualizado automaticamente" : "Snapshot atualizado");
+        onChange();
+      } else if (res.status === 409 && body.reason === "no_script_linked") {
+        toast.warning(body.message ?? "Sem script vinculado", { duration: 8000 });
+      } else {
+        toast.error(body.error ?? body.message ?? `Falha (HTTP ${res.status})`);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro inesperado");
+    } finally {
+      setForcing(false);
+    }
+  };
+
+  // Auto-trigger 1x por destino quando snapshot está parado >30min e há script vinculado
+  useEffect(() => {
+    if (
+      isStale &&
+      destination.enabled &&
+      destination.bi_script_id &&
+      autoTriggeredRef.current !== destination.id &&
+      !forcing
+    ) {
+      autoTriggeredRef.current = destination.id;
+      forceRefresh(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [destination.id, isStale, destination.enabled, destination.bi_script_id]);
+
   const toggleEnabled = async () => {
     await supabase
       .from("bi_destinations")
@@ -493,6 +587,51 @@ function DestinationDetail({
             </Button>
           </div>
         </div>
+
+        {/* Status do snapshot */}
+        <div className="mt-4 rounded-md border bg-muted/30 p-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="text-xs">
+              <div className="font-medium text-foreground">Snapshot atual</div>
+              {snapshot ? (
+                <div className="mt-1 text-muted-foreground">
+                  Atualizado em {new Date(snapshot.updated_at).toLocaleString("pt-BR")}
+                  {ageMs !== null && (
+                    <span className={isStale ? "text-destructive font-medium ml-1" : "ml-1"}>
+                      ({formatAge(ageMs)} atrás)
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div className="mt-1 text-muted-foreground">
+                  Nenhum snapshot gerado ainda.
+                </div>
+              )}
+            </div>
+            <Button
+              size="sm"
+              variant={isStale ? "default" : "outline"}
+              onClick={() => forceRefresh(false)}
+              disabled={forcing}
+            >
+              {forcing ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              Forçar atualização agora
+            </Button>
+          </div>
+          {isStale && (
+            <div className="mt-2 rounded border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
+              <span className="font-medium">⚠ Snapshot desatualizado.</span>{" "}
+              {destination.bi_script_id
+                ? "Tentando regenerar automaticamente a partir do script vinculado…"
+                : "Sem script vinculado — depende do agente local (Windows). Verifique se o serviço SqlSyncAgent está rodando."}
+            </div>
+          )}
+        </div>
+
         {destination.last_error && (
           <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
             <span className="font-medium">Último erro:</span> {destination.last_error}

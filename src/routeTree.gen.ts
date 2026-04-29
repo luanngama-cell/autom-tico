@@ -23,6 +23,7 @@ import { Route as ApiPublicMaintenanceCleanupLogsRouteImport } from './routes/ap
 import { Route as ApiPublicBiSnapshotRouteImport } from './routes/api.public.bi.snapshot'
 import { Route as ApiPublicBiRunScriptsRouteImport } from './routes/api.public.bi.run-scripts'
 import { Route as ApiPublicBiPushRouteImport } from './routes/api.public.bi.push'
+import { Route as ApiPublicBiForceRefreshRouteImport } from './routes/api.public.bi.force-refresh'
 import { Route as ApiPublicAgentManifestRouteImport } from './routes/api.public.agent.manifest'
 import { Route as ApiPublicAgentIngestRouteImport } from './routes/api.public.agent.ingest'
 
@@ -97,6 +98,11 @@ const ApiPublicBiPushRoute = ApiPublicBiPushRouteImport.update({
   path: '/api/public/bi/push',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicBiForceRefreshRoute = ApiPublicBiForceRefreshRouteImport.update({
+  id: '/api/public/bi/force-refresh',
+  path: '/api/public/bi/force-refresh',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicAgentManifestRoute = ApiPublicAgentManifestRouteImport.update({
   id: '/api/public/agent/manifest',
   path: '/api/public/agent/manifest',
@@ -121,6 +127,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/tables': typeof DashboardTablesRoute
   '/api/public/agent/ingest': typeof ApiPublicAgentIngestRoute
   '/api/public/agent/manifest': typeof ApiPublicAgentManifestRoute
+  '/api/public/bi/force-refresh': typeof ApiPublicBiForceRefreshRoute
   '/api/public/bi/push': typeof ApiPublicBiPushRoute
   '/api/public/bi/run-scripts': typeof ApiPublicBiRunScriptsRoute
   '/api/public/bi/snapshot': typeof ApiPublicBiSnapshotRoute
@@ -139,6 +146,7 @@ export interface FileRoutesByTo {
   '/dashboard/tables': typeof DashboardTablesRoute
   '/api/public/agent/ingest': typeof ApiPublicAgentIngestRoute
   '/api/public/agent/manifest': typeof ApiPublicAgentManifestRoute
+  '/api/public/bi/force-refresh': typeof ApiPublicBiForceRefreshRoute
   '/api/public/bi/push': typeof ApiPublicBiPushRoute
   '/api/public/bi/run-scripts': typeof ApiPublicBiRunScriptsRoute
   '/api/public/bi/snapshot': typeof ApiPublicBiSnapshotRoute
@@ -158,6 +166,7 @@ export interface FileRoutesById {
   '/dashboard/tables': typeof DashboardTablesRoute
   '/api/public/agent/ingest': typeof ApiPublicAgentIngestRoute
   '/api/public/agent/manifest': typeof ApiPublicAgentManifestRoute
+  '/api/public/bi/force-refresh': typeof ApiPublicBiForceRefreshRoute
   '/api/public/bi/push': typeof ApiPublicBiPushRoute
   '/api/public/bi/run-scripts': typeof ApiPublicBiRunScriptsRoute
   '/api/public/bi/snapshot': typeof ApiPublicBiSnapshotRoute
@@ -178,6 +187,7 @@ export interface FileRouteTypes {
     | '/dashboard/tables'
     | '/api/public/agent/ingest'
     | '/api/public/agent/manifest'
+    | '/api/public/bi/force-refresh'
     | '/api/public/bi/push'
     | '/api/public/bi/run-scripts'
     | '/api/public/bi/snapshot'
@@ -196,6 +206,7 @@ export interface FileRouteTypes {
     | '/dashboard/tables'
     | '/api/public/agent/ingest'
     | '/api/public/agent/manifest'
+    | '/api/public/bi/force-refresh'
     | '/api/public/bi/push'
     | '/api/public/bi/run-scripts'
     | '/api/public/bi/snapshot'
@@ -214,6 +225,7 @@ export interface FileRouteTypes {
     | '/dashboard/tables'
     | '/api/public/agent/ingest'
     | '/api/public/agent/manifest'
+    | '/api/public/bi/force-refresh'
     | '/api/public/bi/push'
     | '/api/public/bi/run-scripts'
     | '/api/public/bi/snapshot'
@@ -226,6 +238,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ApiPublicAgentIngestRoute: typeof ApiPublicAgentIngestRoute
   ApiPublicAgentManifestRoute: typeof ApiPublicAgentManifestRoute
+  ApiPublicBiForceRefreshRoute: typeof ApiPublicBiForceRefreshRoute
   ApiPublicBiPushRoute: typeof ApiPublicBiPushRoute
   ApiPublicBiRunScriptsRoute: typeof ApiPublicBiRunScriptsRoute
   ApiPublicBiSnapshotRoute: typeof ApiPublicBiSnapshotRoute
@@ -332,6 +345,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicBiPushRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/bi/force-refresh': {
+      id: '/api/public/bi/force-refresh'
+      path: '/api/public/bi/force-refresh'
+      fullPath: '/api/public/bi/force-refresh'
+      preLoaderRoute: typeof ApiPublicBiForceRefreshRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/agent/manifest': {
       id: '/api/public/agent/manifest'
       path: '/api/public/agent/manifest'
@@ -379,6 +399,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ApiPublicAgentIngestRoute: ApiPublicAgentIngestRoute,
   ApiPublicAgentManifestRoute: ApiPublicAgentManifestRoute,
+  ApiPublicBiForceRefreshRoute: ApiPublicBiForceRefreshRoute,
   ApiPublicBiPushRoute: ApiPublicBiPushRoute,
   ApiPublicBiRunScriptsRoute: ApiPublicBiRunScriptsRoute,
   ApiPublicBiSnapshotRoute: ApiPublicBiSnapshotRoute,
