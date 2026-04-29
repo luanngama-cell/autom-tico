@@ -110,7 +110,7 @@ public class SyncWorker : BackgroundService
 
         if (upsertChunks.Length == 0)
         {
-            upsertChunks = [Array.Empty<UpsertRow>()];
+            upsertChunks = new[] { Array.Empty<UpsertRow>() };
         }
 
         for (var chunkIndex = 0; chunkIndex < upsertChunks.Length; chunkIndex++)
