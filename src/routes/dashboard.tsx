@@ -166,7 +166,7 @@ function Overview() {
 
   useEffect(() => {
     load();
-    const i = setInterval(load, 60000);
+    const i = setInterval(load, 15000);
     return () => clearInterval(i);
   }, []);
 
@@ -186,13 +186,32 @@ function Overview() {
     );
   }
 
-  const { stats, connections, tableErrors, recentLogs, activity } = data;
+  const { stats, connections, tableErrors, recentLogs, activity, biDestinations, biStats } = data;
   const conn = connections[0];
   const lastSyncDate = stats.lastSync ? new Date(stats.lastSync) : null;
   const minutesAgo = lastSyncDate
     ? Math.floor((Date.now() - lastSyncDate.getTime()) / 60000)
     : null;
   const maxBucket = Math.max(1, ...activity.map((a) => a.rows));
+
+  const formatAge = (ms: number | null) => {
+    if (ms === null) return "—";
+    if (ms < 60_000) return `${Math.floor(ms / 1000)}s`;
+    if (ms < 3_600_000) return `${Math.floor(ms / 60_000)} min`;
+    if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h`;
+    return `${Math.floor(ms / 86_400_000)}d`;
+  };
+
+  const connStatusLabel: Record<string, string> = {
+    online: "online",
+    stale: "atrasado",
+    offline: "offline",
+  };
+  const connStatusClass: Record<string, string> = {
+    online: "bg-emerald-500 animate-pulse",
+    stale: "bg-amber-500",
+    offline: "bg-destructive",
+  };
 
   return (
     <div className="p-8 space-y-6">
