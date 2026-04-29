@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { getPublicBaseUrl } from "@/lib/public-base-url";
+import { getExternalBaseUrl } from "@/lib/public-base-url";
 
 /**
  * Força a atualização do snapshot de um destino BI.
@@ -89,7 +89,8 @@ export const Route = createFileRoute("/api/public/bi/force-refresh")({
           return json({ error: "AGENT_INGEST_SECRET not configured" }, 500);
         }
 
-        const baseUrl = getPublicBaseUrl(request);
+        const reqOrigin = new URL(request.url).origin;
+        const baseUrl = getExternalBaseUrl(reqOrigin) || reqOrigin;
         const runUrl = `${baseUrl}/api/public/bi/run-scripts`;
 
         try {
