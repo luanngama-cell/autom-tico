@@ -96,6 +96,14 @@ public class SyncWorker : BackgroundService
             {
                 _log.LogError(ex, "Table {Schema}.{Table} failed", t.SchemaName, t.TableName);
             }
+            finally
+            {
+                // Libera buffers grandes (upserts/all_pks) entre tabelas para manter
+                // o working set baixo e respeitar o limite do Job Object.
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+            }
         }
 
         await _cloud.HeartbeatAsync(ct);
