@@ -5,22 +5,21 @@ import { createHash } from "crypto";
 /**
  * Executa um SQL BI livre (somente leitura) contra o banco espelho na nuvem.
  *
- * Auth: Bearer destinationId.rawToken  (mesmo token usado em /api/public/mirror/query)
+ * Auth: Bearer destinationId.rawToken
  *
  * Body JSON:
- *   { "sql": "SELECT COUNT(*) FROM mirror.\"FICHAS\" WHERE ..." }
+ *   {
+ *     "sql": "SELECT ... FROM mirror.\"FICHAS\" ...",
+ *     "cache_seconds": 30,        // opcional, default 30, use 0 pra desligar
+ *     "no_metrics": false         // opcional, default false
+ *   }
  *
  * Resposta:
- *   { rows: [...], count: N, duration_ms: M }
+ *   { rows: [...], count: N, duration_ms: M, cache_hit: bool, cached_at?: ISO }
  *
  * Restrições (forçadas pela função execute_bi_script no banco):
- *   - Transação read-only (qualquer INSERT/UPDATE/DELETE/DDL falha)
+ *   - Transação read-only
  *   - statement_timeout = 120s
- *   - Apenas o resultado da query é retornado, agregado como JSON
- *
- * Use os schemas:
- *   - mirror.<TABELA>     → tabelas espelhadas (FICHAS, fichas_atendimento, etc.)
- *   - public.bi_*         → metadados (não recomendado)
  */
 
 const corsHeaders = {
@@ -28,6 +27,19 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
+
+const MAX_SQL_LENGTH = 100_000;
+const DEFAULT_CACHE_SECONDS = 30;
+const MAX_CACHE_SECONDS = 300;
+const MAX_CACHE_ENTRIES = 500;
+
+type CacheEntry = {
+  rows: unknown[];
+  cachedAt: number;
+  ttlMs: number;
+};
+
+const queryCache = new Map<string, CacheEntry>();
 
 function sha256Hex(s: string) {
   return createHash("sha256").update(s).digest("hex");
@@ -47,6 +59,31 @@ function json(body: unknown, status = 200) {
     status,
     headers: { "Content-Type": "application/json", ...corsHeaders },
   });
+}
+
+function pruneCache() {
+  if (queryCache.size <= MAX_CACHE_ENTRIES) return;
+  // Remove a entrada mais antiga
+  const oldest = [...queryCache.entries()].sort(
+    (a, b) => a[1].cachedAt - b[1].cachedAt
+  )[0];
+  if (oldest) queryCache.delete(oldest[0]);
+}
+
+function getCached(hash: string): CacheEntry | null {
+  const entry = queryCache.get(hash);
+  if (!entry) return null;
+  if (Date.now() - entry.cachedAt > entry.ttlMs) {
+    queryCache.delete(hash);
+    return null;
+  }
+  return entry;
+}
+
+function setCached(hash: string, rows: unknown[], ttlMs: number) {
+  if (ttlMs <= 0) return;
+  queryCache.set(hash, { rows, cachedAt: Date.now(), ttlMs });
+  pruneCache();
 }
 
 async function authorize(request: Request) {
@@ -83,12 +120,37 @@ async function authorize(request: Request) {
   )
     return { ok: false as const, error: "IP not allowed", status: 403 };
 
-  await supabaseAdmin
+  // Não bloqueia: atualiza last_used_at sem await
+  void supabaseAdmin
     .from("bi_destination_tokens")
     .update({ last_used_at: new Date().toISOString() })
     .eq("id", tokenRow.id);
 
-  return { ok: true as const };
+  return { ok: true as const, destinationId };
+}
+
+async function logMetric(args: {
+  destinationId: string | null;
+  sqlHash: string;
+  sqlPreview: string;
+  durationMs: number;
+  rowCount: number;
+  cacheHit: boolean;
+  error: string | null;
+}) {
+  try {
+    await supabaseAdmin.from("bi_query_metrics").insert({
+      destination_id: args.destinationId,
+      sql_hash: args.sqlHash,
+      sql_preview: args.sqlPreview,
+      duration_ms: args.durationMs,
+      row_count: args.rowCount,
+      cache_hit: args.cacheHit,
+      error: args.error,
+    });
+  } catch {
+    // métricas nunca devem quebrar a request
+  }
 }
 
 export const Route = createFileRoute("/api/public/bi/query")({
@@ -99,40 +161,113 @@ export const Route = createFileRoute("/api/public/bi/query")({
         const auth = await authorize(request);
         if (!auth.ok) return json({ error: auth.error }, auth.status);
 
-        let body: { sql?: unknown };
+        let body: { sql?: unknown; cache_seconds?: unknown; no_metrics?: unknown };
         try {
-          body = (await request.json()) as { sql?: unknown };
+          body = (await request.json()) as typeof body;
         } catch {
           return json({ error: "Invalid JSON body" }, 400);
         }
 
         const sql = typeof body.sql === "string" ? body.sql.trim() : "";
         if (!sql) return json({ error: "Missing 'sql' field in body" }, 400);
-        if (sql.length > 100_000)
-          return json({ error: "SQL too large (max 100k chars)" }, 413);
+        if (sql.length > MAX_SQL_LENGTH)
+          return json({ error: `SQL too large (max ${MAX_SQL_LENGTH} chars)` }, 413);
 
+        const cacheSeconds = Math.min(
+          MAX_CACHE_SECONDS,
+          Math.max(
+            0,
+            typeof body.cache_seconds === "number"
+              ? body.cache_seconds
+              : DEFAULT_CACHE_SECONDS
+          )
+        );
+        const skipMetrics = body.no_metrics === true;
+
+        const sqlHash = sha256Hex(sql);
+        const sqlPreview = sql.slice(0, 500);
         const started = Date.now();
+
+        // 1) Cache hit
+        if (cacheSeconds > 0) {
+          const cached = getCached(sqlHash);
+          if (cached) {
+            const duration = Date.now() - started;
+            if (!skipMetrics) {
+              void logMetric({
+                destinationId: auth.destinationId ?? null,
+                sqlHash,
+                sqlPreview,
+                durationMs: duration,
+                rowCount: cached.rows.length,
+                cacheHit: true,
+                error: null,
+              });
+            }
+            return json({
+              rows: cached.rows,
+              count: cached.rows.length,
+              duration_ms: duration,
+              cache_hit: true,
+              cached_at: new Date(cached.cachedAt).toISOString(),
+            });
+          }
+        }
+
+        // 2) Executa
         const { data, error } = await supabaseAdmin.rpc("execute_bi_script", {
           _sql: sql,
         });
 
+        const duration = Date.now() - started;
+
         if (error) {
+          if (!skipMetrics) {
+            void logMetric({
+              destinationId: auth.destinationId ?? null,
+              sqlHash,
+              sqlPreview,
+              durationMs: duration,
+              rowCount: 0,
+              cacheHit: false,
+              error: error.message,
+            });
+          }
           return json(
             {
               error: error.message,
               hint:
-                "A query precisa ser SELECT (read-only). Tabelas espelhadas estão no schema mirror, ex: mirror.\"FICHAS\".",
-              duration_ms: Date.now() - started,
+                'Use SELECT (read-only). Tabelas espelhadas no schema mirror, ex: mirror."FICHAS".',
+              duration_ms: duration,
             },
             400
           );
         }
 
-        const rows = Array.isArray(data) ? data : [];
+        const rows = Array.isArray(data) ? (data as unknown[]) : [];
+
+        // 3) Cache set
+        if (cacheSeconds > 0) {
+          setCached(sqlHash, rows, cacheSeconds * 1000);
+        }
+
+        if (!skipMetrics) {
+          void logMetric({
+            destinationId: auth.destinationId ?? null,
+            sqlHash,
+            sqlPreview,
+            durationMs: duration,
+            rowCount: rows.length,
+            cacheHit: false,
+            error: null,
+          });
+        }
+
         return json({
           rows,
           count: rows.length,
-          duration_ms: Date.now() - started,
+          duration_ms: duration,
+          cache_hit: false,
         });
       },
     },
