@@ -14,6 +14,7 @@ import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DashboardTablesRouteImport } from './routes/dashboard.tables'
 import { Route as DashboardSettingsRouteImport } from './routes/dashboard.settings'
+import { Route as DashboardMaterializedViewsRouteImport } from './routes/dashboard.materialized-views'
 import { Route as DashboardLogsRouteImport } from './routes/dashboard.logs'
 import { Route as DashboardConnectionsRouteImport } from './routes/dashboard.connections'
 import { Route as DashboardBiScriptsRouteImport } from './routes/dashboard.bi-scripts'
@@ -25,6 +26,7 @@ import { Route as ApiPublicMirrorAllPksRouteImport } from './routes/api.public.m
 import { Route as ApiPublicMaintenanceCleanupLogsRouteImport } from './routes/api.public.maintenance.cleanup-logs'
 import { Route as ApiPublicBiSnapshotRouteImport } from './routes/api.public.bi.snapshot'
 import { Route as ApiPublicBiRunScriptsRouteImport } from './routes/api.public.bi.run-scripts'
+import { Route as ApiPublicBiRefreshMvsRouteImport } from './routes/api.public.bi.refresh-mvs'
 import { Route as ApiPublicBiQueryRouteImport } from './routes/api.public.bi.query'
 import { Route as ApiPublicBiPushRouteImport } from './routes/api.public.bi.push'
 import { Route as ApiPublicBiForceRefreshRouteImport } from './routes/api.public.bi.force-refresh'
@@ -57,6 +59,12 @@ const DashboardSettingsRoute = DashboardSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardMaterializedViewsRoute =
+  DashboardMaterializedViewsRouteImport.update({
+    id: '/materialized-views',
+    path: '/materialized-views',
+    getParentRoute: () => DashboardRoute,
+  } as any)
 const DashboardLogsRoute = DashboardLogsRouteImport.update({
   id: '/logs',
   path: '/logs',
@@ -113,6 +121,11 @@ const ApiPublicBiRunScriptsRoute = ApiPublicBiRunScriptsRouteImport.update({
   path: '/api/public/bi/run-scripts',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicBiRefreshMvsRoute = ApiPublicBiRefreshMvsRouteImport.update({
+  id: '/api/public/bi/refresh-mvs',
+  path: '/api/public/bi/refresh-mvs',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicBiQueryRoute = ApiPublicBiQueryRouteImport.update({
   id: '/api/public/bi/query',
   path: '/api/public/bi/query',
@@ -153,6 +166,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/bi-scripts': typeof DashboardBiScriptsRoute
   '/dashboard/connections': typeof DashboardConnectionsRoute
   '/dashboard/logs': typeof DashboardLogsRoute
+  '/dashboard/materialized-views': typeof DashboardMaterializedViewsRoute
   '/dashboard/settings': typeof DashboardSettingsRoute
   '/dashboard/tables': typeof DashboardTablesRoute
   '/api/public/agent/heartbeat': typeof ApiPublicAgentHeartbeatRoute
@@ -161,6 +175,7 @@ export interface FileRoutesByFullPath {
   '/api/public/bi/force-refresh': typeof ApiPublicBiForceRefreshRoute
   '/api/public/bi/push': typeof ApiPublicBiPushRoute
   '/api/public/bi/query': typeof ApiPublicBiQueryRoute
+  '/api/public/bi/refresh-mvs': typeof ApiPublicBiRefreshMvsRoute
   '/api/public/bi/run-scripts': typeof ApiPublicBiRunScriptsRoute
   '/api/public/bi/snapshot': typeof ApiPublicBiSnapshotRoute
   '/api/public/maintenance/cleanup-logs': typeof ApiPublicMaintenanceCleanupLogsRoute
@@ -177,6 +192,7 @@ export interface FileRoutesByTo {
   '/dashboard/bi-scripts': typeof DashboardBiScriptsRoute
   '/dashboard/connections': typeof DashboardConnectionsRoute
   '/dashboard/logs': typeof DashboardLogsRoute
+  '/dashboard/materialized-views': typeof DashboardMaterializedViewsRoute
   '/dashboard/settings': typeof DashboardSettingsRoute
   '/dashboard/tables': typeof DashboardTablesRoute
   '/api/public/agent/heartbeat': typeof ApiPublicAgentHeartbeatRoute
@@ -185,6 +201,7 @@ export interface FileRoutesByTo {
   '/api/public/bi/force-refresh': typeof ApiPublicBiForceRefreshRoute
   '/api/public/bi/push': typeof ApiPublicBiPushRoute
   '/api/public/bi/query': typeof ApiPublicBiQueryRoute
+  '/api/public/bi/refresh-mvs': typeof ApiPublicBiRefreshMvsRoute
   '/api/public/bi/run-scripts': typeof ApiPublicBiRunScriptsRoute
   '/api/public/bi/snapshot': typeof ApiPublicBiSnapshotRoute
   '/api/public/maintenance/cleanup-logs': typeof ApiPublicMaintenanceCleanupLogsRoute
@@ -202,6 +219,7 @@ export interface FileRoutesById {
   '/dashboard/bi-scripts': typeof DashboardBiScriptsRoute
   '/dashboard/connections': typeof DashboardConnectionsRoute
   '/dashboard/logs': typeof DashboardLogsRoute
+  '/dashboard/materialized-views': typeof DashboardMaterializedViewsRoute
   '/dashboard/settings': typeof DashboardSettingsRoute
   '/dashboard/tables': typeof DashboardTablesRoute
   '/api/public/agent/heartbeat': typeof ApiPublicAgentHeartbeatRoute
@@ -210,6 +228,7 @@ export interface FileRoutesById {
   '/api/public/bi/force-refresh': typeof ApiPublicBiForceRefreshRoute
   '/api/public/bi/push': typeof ApiPublicBiPushRoute
   '/api/public/bi/query': typeof ApiPublicBiQueryRoute
+  '/api/public/bi/refresh-mvs': typeof ApiPublicBiRefreshMvsRoute
   '/api/public/bi/run-scripts': typeof ApiPublicBiRunScriptsRoute
   '/api/public/bi/snapshot': typeof ApiPublicBiSnapshotRoute
   '/api/public/maintenance/cleanup-logs': typeof ApiPublicMaintenanceCleanupLogsRoute
@@ -228,6 +247,7 @@ export interface FileRouteTypes {
     | '/dashboard/bi-scripts'
     | '/dashboard/connections'
     | '/dashboard/logs'
+    | '/dashboard/materialized-views'
     | '/dashboard/settings'
     | '/dashboard/tables'
     | '/api/public/agent/heartbeat'
@@ -236,6 +256,7 @@ export interface FileRouteTypes {
     | '/api/public/bi/force-refresh'
     | '/api/public/bi/push'
     | '/api/public/bi/query'
+    | '/api/public/bi/refresh-mvs'
     | '/api/public/bi/run-scripts'
     | '/api/public/bi/snapshot'
     | '/api/public/maintenance/cleanup-logs'
@@ -252,6 +273,7 @@ export interface FileRouteTypes {
     | '/dashboard/bi-scripts'
     | '/dashboard/connections'
     | '/dashboard/logs'
+    | '/dashboard/materialized-views'
     | '/dashboard/settings'
     | '/dashboard/tables'
     | '/api/public/agent/heartbeat'
@@ -260,6 +282,7 @@ export interface FileRouteTypes {
     | '/api/public/bi/force-refresh'
     | '/api/public/bi/push'
     | '/api/public/bi/query'
+    | '/api/public/bi/refresh-mvs'
     | '/api/public/bi/run-scripts'
     | '/api/public/bi/snapshot'
     | '/api/public/maintenance/cleanup-logs'
@@ -276,6 +299,7 @@ export interface FileRouteTypes {
     | '/dashboard/bi-scripts'
     | '/dashboard/connections'
     | '/dashboard/logs'
+    | '/dashboard/materialized-views'
     | '/dashboard/settings'
     | '/dashboard/tables'
     | '/api/public/agent/heartbeat'
@@ -284,6 +308,7 @@ export interface FileRouteTypes {
     | '/api/public/bi/force-refresh'
     | '/api/public/bi/push'
     | '/api/public/bi/query'
+    | '/api/public/bi/refresh-mvs'
     | '/api/public/bi/run-scripts'
     | '/api/public/bi/snapshot'
     | '/api/public/maintenance/cleanup-logs'
@@ -302,6 +327,7 @@ export interface RootRouteChildren {
   ApiPublicBiForceRefreshRoute: typeof ApiPublicBiForceRefreshRoute
   ApiPublicBiPushRoute: typeof ApiPublicBiPushRoute
   ApiPublicBiQueryRoute: typeof ApiPublicBiQueryRoute
+  ApiPublicBiRefreshMvsRoute: typeof ApiPublicBiRefreshMvsRoute
   ApiPublicBiRunScriptsRoute: typeof ApiPublicBiRunScriptsRoute
   ApiPublicBiSnapshotRoute: typeof ApiPublicBiSnapshotRoute
   ApiPublicMaintenanceCleanupLogsRoute: typeof ApiPublicMaintenanceCleanupLogsRoute
@@ -345,6 +371,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/dashboard/settings'
       preLoaderRoute: typeof DashboardSettingsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/materialized-views': {
+      id: '/dashboard/materialized-views'
+      path: '/materialized-views'
+      fullPath: '/dashboard/materialized-views'
+      preLoaderRoute: typeof DashboardMaterializedViewsRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/dashboard/logs': {
@@ -424,6 +457,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicBiRunScriptsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/bi/refresh-mvs': {
+      id: '/api/public/bi/refresh-mvs'
+      path: '/api/public/bi/refresh-mvs'
+      fullPath: '/api/public/bi/refresh-mvs'
+      preLoaderRoute: typeof ApiPublicBiRefreshMvsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/bi/query': {
       id: '/api/public/bi/query'
       path: '/api/public/bi/query'
@@ -475,6 +515,7 @@ interface DashboardRouteChildren {
   DashboardBiScriptsRoute: typeof DashboardBiScriptsRoute
   DashboardConnectionsRoute: typeof DashboardConnectionsRoute
   DashboardLogsRoute: typeof DashboardLogsRoute
+  DashboardMaterializedViewsRoute: typeof DashboardMaterializedViewsRoute
   DashboardSettingsRoute: typeof DashboardSettingsRoute
   DashboardTablesRoute: typeof DashboardTablesRoute
 }
@@ -485,6 +526,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardBiScriptsRoute: DashboardBiScriptsRoute,
   DashboardConnectionsRoute: DashboardConnectionsRoute,
   DashboardLogsRoute: DashboardLogsRoute,
+  DashboardMaterializedViewsRoute: DashboardMaterializedViewsRoute,
   DashboardSettingsRoute: DashboardSettingsRoute,
   DashboardTablesRoute: DashboardTablesRoute,
 }
@@ -503,6 +545,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicBiForceRefreshRoute: ApiPublicBiForceRefreshRoute,
   ApiPublicBiPushRoute: ApiPublicBiPushRoute,
   ApiPublicBiQueryRoute: ApiPublicBiQueryRoute,
+  ApiPublicBiRefreshMvsRoute: ApiPublicBiRefreshMvsRoute,
   ApiPublicBiRunScriptsRoute: ApiPublicBiRunScriptsRoute,
   ApiPublicBiSnapshotRoute: ApiPublicBiSnapshotRoute,
   ApiPublicMaintenanceCleanupLogsRoute: ApiPublicMaintenanceCleanupLogsRoute,

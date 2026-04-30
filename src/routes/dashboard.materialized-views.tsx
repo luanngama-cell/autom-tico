@@ -122,8 +122,6 @@ function MvPage() {
 
   const remove = async (mv: Mv) => {
     if (!confirm(`Excluir a view "${mv.name}"?`)) return;
-    // Drop the actual MV first (best-effort via RPC trick)
-    await supabase.rpc("refresh_mv", { _name: mv.name }).catch(() => null);
     const { error } = await supabase.from("mv_registry").delete().eq("id", mv.id);
     if (error) {
       toast.error(error.message);
