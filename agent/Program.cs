@@ -37,6 +37,7 @@ builder.Services.Configure<SqlOptions>(builder.Configuration.GetSection("Sql"));
 builder.Services.Configure<SyncOptions>(builder.Configuration.GetSection("Sync"));
 builder.Services.Configure<BiOptions>(builder.Configuration.GetSection("Bi"));
 builder.Services.Configure<MemoryOptions>(builder.Configuration.GetSection("Memory"));
+builder.Services.Configure<LargeTablesOptions>(builder.Configuration.GetSection("LargeTables"));
 
 builder.Services.AddHttpClient("cloud", (sp, client) =>
 {
@@ -47,6 +48,7 @@ builder.Services.AddHttpClient("cloud", (sp, client) =>
 
 builder.Services.AddSingleton<SqlReader>();
 builder.Services.AddSingleton<CloudClient>();
+builder.Services.AddSingleton<TableScheduler>();
 builder.Services.AddSingleton<BiScriptRunner>();
 builder.Services.AddHostedService<SyncWorker>();
 builder.Services.AddHostedService<BiPushWorker>();
@@ -55,10 +57,13 @@ var host = builder.Build();
 
 var startupLog = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
 var syncOptions = host.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<SyncOptions>>().Value;
+var largeOptions = host.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<LargeTablesOptions>>().Value;
 startupLog.LogInformation(
-    "Sync config loaded: Schema={Schema}, IntervalSeconds={IntervalSeconds}, MaxRowsPerTablePerCycle={MaxRowsPerTablePerCycle}",
+    "Sync config: Schema={Schema} IntervalSeconds={Interval} ChunkSize={Chunk} LargeTables={LargeCount} SLA={Hours}h",
     syncOptions.Schema,
     syncOptions.IntervalSeconds,
-    syncOptions.MaxRowsPerTablePerCycle);
+    syncOptions.MaxRowsPerTablePerCycle,
+    largeOptions.Tables.Count,
+    largeOptions.MaxStalenessHours);
 
 host.Run();

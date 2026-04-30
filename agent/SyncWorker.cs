@@ -8,21 +8,32 @@ public class SyncWorker : BackgroundService
 {
     private readonly SqlReader _reader;
     private readonly CloudClient _cloud;
+    private readonly TableScheduler _scheduler;
     private readonly SyncOptions _sync;
+    private readonly LargeTablesOptions _largeOpts;
     private readonly ILogger<SyncWorker> _log;
 
-    public SyncWorker(SqlReader reader, CloudClient cloud, IOptions<SyncOptions> sync, ILogger<SyncWorker> log)
+    public SyncWorker(
+        SqlReader reader,
+        CloudClient cloud,
+        TableScheduler scheduler,
+        IOptions<SyncOptions> sync,
+        IOptions<LargeTablesOptions> largeOpts,
+        ILogger<SyncWorker> log)
     {
         _reader = reader;
         _cloud = cloud;
+        _scheduler = scheduler;
         _sync = sync.Value;
+        _largeOpts = largeOpts.Value;
         _log = log;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _log.LogInformation("SqlSyncAgent started. Interval={Interval}s Schema={Schema}",
-            _sync.IntervalSeconds, _sync.Schema);
+        _log.LogInformation(
+            "SqlSyncAgent started. Interval={Interval}s Schema={Schema} ChunkSize={Chunk} LargeTables={Large}",
+            _sync.IntervalSeconds, _sync.Schema, _sync.MaxRowsPerTablePerCycle, _largeOpts.Tables.Count);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -46,11 +57,10 @@ public class SyncWorker : BackgroundService
     private async Task RunCycleAsync(CancellationToken ct)
     {
         var started = DateTime.UtcNow;
-        _log.LogInformation("Cycle start");
+        _log.LogInformation("Cycle start (mem {Mem:F0} MB)", TableScheduler.CurrentMemoryMb());
 
         await _cloud.HeartbeatAsync(ct);
 
-        // 1. Get manifest (last_checksum per known table)
         var manifest = await _cloud.GetManifestAsync(ct);
         var lastChecksums = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         if (manifest != null && manifest.RootElement.TryGetProperty("tables", out var tarr))
@@ -63,109 +73,109 @@ public class SyncWorker : BackgroundService
             }
         }
 
-        // 2. Discover tables
-        var tables = await _reader.DiscoverTablesAsync(ct);
-        _log.LogInformation("Discovered {Count} tables", tables.Count);
+        var allTables = await _reader.DiscoverTablesAsync(ct);
+        var (normal, large) = _scheduler.SplitForCycle(allTables);
+        _log.LogInformation(
+            "Discovered {Total} tables → {Normal} normal + {Large} large (this cycle)",
+            allTables.Count, normal.Count, large.Count);
 
         var sentTables = 0;
+        var totalToSend = normal.Count + large.Count;
 
-        foreach (var t in tables)
+        // 1. Tabelas normais primeiro (rápidas, ciclo "leve")
+        foreach (var t in normal)
         {
-            try
+            if (await ProcessTableAsync(t, lastChecksums, sentTables, totalToSend, _sync.MaxRowsPerTablePerCycle, isLarge: false, ct))
             {
-                var key = $"{t.SchemaName}.{t.TableName}";
-                lastChecksums.TryGetValue(key, out var lastCs);
-                var snap = await _reader.ReadTableAsync(t, lastCs, ct);
-
-                if (snap.Upserts.Count == 0 && snap.Strategy == "rowversion")
-                {
-                    // nothing changed, but still report heartbeat
-                }
-
-                var ok = await SendTableSnapshotAsync(t, snap, sentTables, tables.Count, ct);
-                if (!ok)
-                {
-                    _log.LogError("Table sync failed for {Schema}.{Table}, aborting cycle", t.SchemaName, t.TableName);
-                    return;
-                }
-
-                sentTables += 1;
-                await _cloud.HeartbeatAsync(ct);
+                sentTables++;
             }
-            catch (Exception ex)
+        }
+
+        // 2. Tabelas grandes (streaming + chunk pequeno)
+        foreach (var t in large)
+        {
+            if (await ProcessTableAsync(t, lastChecksums, sentTables, totalToSend, _largeOpts.ChunkSize, isLarge: true, ct))
             {
-                _log.LogError(ex, "Table {Schema}.{Table} failed", t.SchemaName, t.TableName);
-            }
-            finally
-            {
-                // Libera buffers grandes (upserts/all_pks) entre tabelas para manter
-                // o working set baixo e respeitar o limite do Job Object.
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                GC.Collect();
+                sentTables++;
+                _scheduler.MarkSynced(t.SchemaName, t.TableName);
             }
         }
 
         await _cloud.HeartbeatAsync(ct);
-        _log.LogInformation("Cycle done in {Ms}ms ({Count} tables sent)",
-            (DateTime.UtcNow - started).TotalMilliseconds, sentTables);
+        _log.LogInformation("Cycle done in {Ms}ms ({Sent}/{Total} tables, mem {Mem:F0} MB)",
+            (DateTime.UtcNow - started).TotalMilliseconds, sentTables, totalToSend, TableScheduler.CurrentMemoryMb());
     }
 
-    private async Task<bool> SendTableSnapshotAsync(TableInfo table, TableSnapshot snap, int sentTables, int totalTables, CancellationToken ct)
+    private async Task<bool> ProcessTableAsync(
+        TableInfo t,
+        Dictionary<string, string?> lastChecksums,
+        int sentTables,
+        int totalTables,
+        int chunkSize,
+        bool isLarge,
+        CancellationToken ct)
     {
-        var chunkSize = Math.Min(Math.Max(_sync.MaxRowsPerTablePerCycle, 1), 5000);
-        var upsertChunks = snap.Upserts.Chunk(chunkSize).ToArray();
-
-        if (upsertChunks.Length == 0)
+        try
         {
-            upsertChunks = new[] { Array.Empty<UpsertRow>() };
-        }
+            var key = $"{t.SchemaName}.{t.TableName}";
+            lastChecksums.TryGetValue(key, out var lastCs);
 
-        for (var chunkIndex = 0; chunkIndex < upsertChunks.Length; chunkIndex++)
-        {
-            var chunk = upsertChunks[chunkIndex];
-            var isFinalChunk = chunkIndex == upsertChunks.Length - 1;
-            var payload = new
+            ChunkSenderAsync sender = async (chunk, chunkIndex, chunksTotal, isFinal, finalCs, sct) =>
             {
-                connection = new { status = "online" },
-                progress = new { sent = sentTables, total = totalTables },
-                tables = new[]
+                var payload = new
                 {
-                    new
+                    connection = new { status = "online" },
+                    progress = new { sent = sentTables, total = totalTables },
+                    tables = new[]
                     {
-                        schema_name = table.SchemaName,
-                        table_name = table.TableName,
-                        primary_keys = table.PrimaryKeys,
-                        has_rowversion = table.HasRowVersion,
-                        strategy = snap.Strategy,
-                        row_count = snap.RowCount,
-                        last_checksum = isFinalChunk ? snap.LastChecksum ?? string.Empty : null,
-                        upserts = chunk.Select(u => new
+                        new
                         {
-                            pk = u.Pk,
-                            data = u.Data,
-                            row_hash = u.RowHash,
-                        }),
-                        chunk_index = chunkIndex + 1,
-                        chunks_total = upsertChunks.Length,
-                        full_replace = isFinalChunk && snap.FullReplace,
-                        all_pks = isFinalChunk ? snap.AllPks : null,
-                    }
-                },
+                            schema_name = t.SchemaName,
+                            table_name = t.TableName,
+                            primary_keys = t.PrimaryKeys,
+                            has_rowversion = t.HasRowVersion,
+                            strategy = t.HasRowVersion ? "rowversion" : "full_scan",
+                            row_count = chunk.Count, // approx — atualizado no final via última call
+                            last_checksum = isFinal ? finalCs ?? string.Empty : null,
+                            upserts = chunk.Select(u => new
+                            {
+                                pk = u.Pk,
+                                data = u.Data,
+                                row_hash = u.RowHash,
+                            }),
+                            chunk_index = chunkIndex,
+                            chunks_total = chunksTotal > 0 ? chunksTotal : 9999, // placeholder; servidor só usa para detectar "final"
+                            full_replace = false,
+                            // Para tabelas grandes NUNCA enviamos all_pks (consumiria GBs de RAM).
+                            // Reconciliação de deletes para large tables fica desabilitada (deletes via tombstone seria próximo passo).
+                            all_pks = (object?)null,
+                        }
+                    },
+                };
+
+                return await _cloud.IngestAsync(payload, sct);
             };
 
+            var result = await _reader.StreamTableAsync(t, lastCs, sender, chunkSize, ct);
+
             _log.LogInformation(
-                "Sending table {Schema}.{Table} chunk {Chunk}/{TotalChunks} ({Rows} rows)",
-                table.SchemaName,
-                table.TableName,
-                chunkIndex + 1,
-                upsertChunks.Length,
-                chunk.Length);
+                "{Tag} {Schema}.{Table}: {Rows} rows in {Chunks} chunks (strategy={Strategy})",
+                isLarge ? "[LARGE]" : "[norm]",
+                t.SchemaName, t.TableName, result.TotalRowsStreamed, result.TotalChunksSent, result.Strategy);
 
-            var ok = await _cloud.IngestAsync(payload, ct);
-            if (!ok) return false;
+            return true;
         }
-
-        return true;
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Table {Schema}.{Table} failed", t.SchemaName, t.TableName);
+            return false;
+        }
+        finally
+        {
+            // Liberação agressiva entre tabelas
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+        }
     }
 }
