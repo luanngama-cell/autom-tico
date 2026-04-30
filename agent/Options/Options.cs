@@ -34,10 +34,10 @@ public class SyncOptions
 
 public class MemoryOptions
 {
-    /// <summary>Percentual máximo da RAM física que o agente pode usar (10–90). Default: 50%.</summary>
-    public int MaxPercentOfTotalRam { get; set; } = 50;
-    /// <summary>Limiar (MB) acima do qual tabelas grandes ficam pausadas até a memória baixar. Default: 3000 MB.</summary>
-    public int LargeTablePauseAboveMb { get; set; } = 3000;
+    /// <summary>Percentual máximo da RAM física que o agente pode usar (10–90). Default: 25%.</summary>
+    public int MaxPercentOfTotalRam { get; set; } = 25;
+    /// <summary>Limiar (MB) acima do qual tabelas grandes ficam pausadas até a memória baixar. Default: 1500 MB.</summary>
+    public int LargeTablePauseAboveMb { get; set; } = 1500;
 }
 
 public class LargeTablesOptions
@@ -48,8 +48,8 @@ public class LargeTablesOptions
     public int MaxStalenessHours { get; set; } = 2;
     /// <summary>Quantas tabelas grandes processar por ciclo (em condição normal). Default: 1.</summary>
     public int MaxPerCycle { get; set; } = 1;
-    /// <summary>Tamanho do lote para streaming de tabelas grandes (linhas por chunk). Default: 1000.</summary>
-    public int ChunkSize { get; set; } = 1000;
+    /// <summary>Tamanho do lote para streaming de tabelas grandes (linhas por chunk). Default: 200 (pequeno por causa de BLOBs).</summary>
+    public int ChunkSize { get; set; } = 200;
 }
 
 public class BiOptions
