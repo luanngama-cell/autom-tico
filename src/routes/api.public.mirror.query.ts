@@ -115,27 +115,23 @@ function parseAfterPk(url: URL, primaryKeys: string[]) {
     }
   }
 
-  const bracketMatches = Object.fromEntries(
-    [...url.searchParams.entries()]
-      .map(([param, value]) => {
-        const match = /^after_pk\[(.+)\]$/i.exec(param);
-        return match ? ([match[1], parseScalarParam(value)] as const) : null;
-      })
-      .filter((entry): entry is readonly [string, unknown] => entry !== null)
-  );
+  const bracketMatches = [...url.searchParams.entries()].reduce<Record<string, unknown>>((acc, [param, value]) => {
+    const match = /^after_pk\[(.+)\]$/i.exec(param);
+    if (match) {
+      acc[match[1]] = parseScalarParam(value);
+    }
+    return acc;
+  }, {});
   const normalizedBracketed = normalizeAfterPkObject(bracketMatches, primaryKeys);
   if (normalizedBracketed) return normalizedBracketed;
 
-  const prefixedMatches = Object.fromEntries(
-    [...url.searchParams.entries()]
-      .map(([param, value]) => {
-        const match = /^after_(.+)$/i.exec(param);
-        return match && match[1].toLowerCase() !== "pk"
-          ? ([match[1], parseScalarParam(value)] as const)
-          : null;
-      })
-      .filter((entry): entry is readonly [string, unknown] => entry !== null)
-  );
+  const prefixedMatches = [...url.searchParams.entries()].reduce<Record<string, unknown>>((acc, [param, value]) => {
+    const match = /^after_(.+)$/i.exec(param);
+    if (match && match[1].toLowerCase() !== "pk") {
+      acc[match[1]] = parseScalarParam(value);
+    }
+    return acc;
+  }, {});
   return normalizeAfterPkObject(prefixedMatches, primaryKeys);
 }
 
