@@ -211,6 +211,42 @@ export type Database = {
           },
         ]
       }
+      bi_query_metrics: {
+        Row: {
+          cache_hit: boolean
+          created_at: string
+          destination_id: string | null
+          duration_ms: number
+          error: string | null
+          id: string
+          row_count: number
+          sql_hash: string
+          sql_preview: string
+        }
+        Insert: {
+          cache_hit?: boolean
+          created_at?: string
+          destination_id?: string | null
+          duration_ms: number
+          error?: string | null
+          id?: string
+          row_count?: number
+          sql_hash: string
+          sql_preview: string
+        }
+        Update: {
+          cache_hit?: boolean
+          created_at?: string
+          destination_id?: string | null
+          duration_ms?: number
+          error?: string | null
+          id?: string
+          row_count?: number
+          sql_hash?: string
+          sql_preview?: string
+        }
+        Relationships: []
+      }
       bi_scripts: {
         Row: {
           created_at: string
