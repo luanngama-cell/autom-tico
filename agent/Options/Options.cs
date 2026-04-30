@@ -19,13 +19,16 @@ public class SqlOptions
     public bool Encrypt { get; set; } = true;
     public bool TrustServerCertificate { get; set; } = true;
     public int ConnectTimeoutSeconds { get; set; } = 15;
+    /// <summary>Timeout para queries SELECT/COUNT (segundos). Default: 600s (10min) — necessário para tabelas gigantes.</summary>
+    public int CommandTimeoutSeconds { get; set; } = 600;
 }
 
 public class SyncOptions
 {
     public int IntervalSeconds { get; set; } = 60;
     public string Schema { get; set; } = "dbo";
-    public int MaxRowsPerTablePerCycle { get; set; } = 50000;
+    /// <summary>Tamanho do lote enviado ao Cloud por chunk. Streaming: cada chunk é enviado e descartado da RAM imediatamente.</summary>
+    public int MaxRowsPerTablePerCycle { get; set; } = 2000;
     public List<string> ExcludedTables { get; set; } = new();
 }
 
@@ -33,6 +36,20 @@ public class MemoryOptions
 {
     /// <summary>Percentual máximo da RAM física que o agente pode usar (10–90). Default: 50%.</summary>
     public int MaxPercentOfTotalRam { get; set; } = 50;
+    /// <summary>Limiar (MB) acima do qual tabelas grandes ficam pausadas até a memória baixar. Default: 3000 MB.</summary>
+    public int LargeTablePauseAboveMb { get; set; } = 3000;
+}
+
+public class LargeTablesOptions
+{
+    /// <summary>Lista de nomes de tabelas (case-insensitive) tratadas como "grandes": só rodam quando memória está baixa, com SLA garantido.</summary>
+    public List<string> Tables { get; set; } = new();
+    /// <summary>SLA em horas: se uma tabela grande não foi sincronizada nesse intervalo, vira prioritária no próximo ciclo (mesmo sob pressão de memória).</summary>
+    public int MaxStalenessHours { get; set; } = 2;
+    /// <summary>Quantas tabelas grandes processar por ciclo (em condição normal). Default: 1.</summary>
+    public int MaxPerCycle { get; set; } = 1;
+    /// <summary>Tamanho do lote para streaming de tabelas grandes (linhas por chunk). Default: 1000.</summary>
+    public int ChunkSize { get; set; } = 1000;
 }
 
 public class BiOptions

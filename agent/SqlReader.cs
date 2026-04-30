@@ -15,32 +15,58 @@ public record TableInfo(
     List<string> PrimaryKeys,
     bool HasRowVersion);
 
-public record TableSnapshot(
-    TableInfo Table,
-    string Strategy,
-    long RowCount,
-    string? LastChecksum,
-    List<UpsertRow> Upserts,
-    bool FullReplace,
-    List<Dictionary<string, object?>> AllPks);
-
 public record UpsertRow(
     Dictionary<string, object?> Pk,
     Dictionary<string, object?> Data,
     string RowHash);
 
+/// <summary>
+/// Resumo retornado após sync streaming de uma tabela.
+/// NÃO contém as linhas — elas foram enviadas durante o stream via callback.
+/// </summary>
+public record TableStreamResult(
+    TableInfo Table,
+    string Strategy,
+    long RowCount,
+    string? LastChecksum,
+    int TotalRowsStreamed,
+    int TotalChunksSent);
+
+/// <summary>
+/// Callback para enviar um lote de upserts ao Cloud durante o stream.
+/// Recebe: chunk de linhas, índice do chunk (1-based), total de chunks (-1 se desconhecido),
+/// é o último? (último chunk inclui last_checksum e libera reconciliação).
+/// Retorna false se o envio falhou — leitura é abortada.
+/// </summary>
+public delegate Task<bool> ChunkSenderAsync(
+    IReadOnlyList<UpsertRow> chunk,
+    int chunkIndex,
+    int chunksTotal,
+    bool isFinal,
+    string? finalChecksum,
+    CancellationToken ct);
+
 public class SqlReader
 {
     private readonly SqlOptions _opts;
     private readonly SyncOptions _sync;
+    private readonly LargeTablesOptions _largeTables;
     private readonly ILogger<SqlReader> _log;
 
-    public SqlReader(IOptions<SqlOptions> opts, IOptions<SyncOptions> sync, ILogger<SqlReader> log)
+    public SqlReader(
+        IOptions<SqlOptions> opts,
+        IOptions<SyncOptions> sync,
+        IOptions<LargeTablesOptions> largeTables,
+        ILogger<SqlReader> log)
     {
         _opts = opts.Value;
         _sync = sync.Value;
+        _largeTables = largeTables.Value;
         _log = log;
     }
+
+    public bool IsLargeTable(string tableName) =>
+        _largeTables.Tables.Contains(tableName, StringComparer.OrdinalIgnoreCase);
 
     private string ConnectionString
     {
@@ -83,7 +109,7 @@ WHERE t.TABLE_TYPE = 'BASE TABLE' AND t.TABLE_SCHEMA = @schema
 ORDER BY t.TABLE_NAME";
 
         var tableNames = new List<(string s, string t)>();
-        await using (var cmd = new SqlCommand(sql, conn))
+        await using (var cmd = new SqlCommand(sql, conn) { CommandTimeout = _opts.CommandTimeoutSeconds })
         {
             cmd.Parameters.AddWithValue("@schema", _sync.Schema);
             await using var rd = await cmd.ExecuteReaderAsync(ct);
@@ -106,7 +132,7 @@ JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
  AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
 WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
   AND tc.TABLE_SCHEMA = @s AND tc.TABLE_NAME = @t
-ORDER BY kcu.ORDINAL_POSITION", conn))
+ORDER BY kcu.ORDINAL_POSITION", conn) { CommandTimeout = _opts.CommandTimeoutSeconds })
             {
                 cmd.Parameters.AddWithValue("@s", schema);
                 cmd.Parameters.AddWithValue("@t", table);
@@ -119,7 +145,7 @@ ORDER BY kcu.ORDINAL_POSITION", conn))
 SELECT COUNT(*) FROM sys.columns c
 JOIN sys.tables t ON t.object_id = c.object_id
 JOIN sys.schemas s ON s.schema_id = t.schema_id
-WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn))
+WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn) { CommandTimeout = _opts.CommandTimeoutSeconds })
             {
                 cmd.Parameters.AddWithValue("@s", schema);
                 cmd.Parameters.AddWithValue("@t", table);
@@ -138,31 +164,53 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn))
         return result;
     }
 
-    public async Task<TableSnapshot> ReadTableAsync(TableInfo table, string? lastChecksum, CancellationToken ct)
+    /// <summary>
+    /// Lê uma tabela em modo STREAMING: lê N linhas, envia via sender, libera memória, repete.
+    /// Não acumula nada em listas. Não carrega all_pks (reconciliação fica desabilitada para tabelas grandes
+    /// — mudanças aparecem via upsert; deletes só são detectados em ciclos de "full reconcile" agendados).
+    /// </summary>
+    public async Task<TableStreamResult> StreamTableAsync(
+        TableInfo table,
+        string? lastChecksum,
+        ChunkSenderAsync sender,
+        int chunkSize,
+        CancellationToken ct)
     {
         await using var conn = new SqlConnection(ConnectionString);
         await conn.OpenAsync(ct);
 
         long rowCount;
-        await using (var cmd = new SqlCommand($"SELECT COUNT_BIG(*) FROM [{table.SchemaName}].[{table.TableName}]", conn))
+        await using (var cmd = new SqlCommand(
+            $"SELECT COUNT_BIG(*) FROM [{table.SchemaName}].[{table.TableName}]",
+            conn) { CommandTimeout = _opts.CommandTimeoutSeconds })
         {
             rowCount = (long)(await cmd.ExecuteScalarAsync(ct) ?? 0L);
         }
 
         return table.HasRowVersion
-            ? await ReadIncrementalAsync(conn, table, lastChecksum, rowCount, ct)
-            : await ReadFullScanAsync(conn, table, rowCount, ct);
+            ? await StreamIncrementalAsync(conn, table, lastChecksum, rowCount, sender, chunkSize, ct)
+            : await StreamKeysetAsync(conn, table, rowCount, sender, chunkSize, ct);
     }
 
-    private async Task<TableSnapshot> ReadIncrementalAsync(
-        SqlConnection conn, TableInfo table, string? lastChecksum, long rowCount, CancellationToken ct)
+    /// <summary>
+    /// Streaming incremental via rowversion. Lê em lotes ordenados por rv,
+    /// envia cada lote, descarta da memória, continua de onde parou.
+    /// </summary>
+    private async Task<TableStreamResult> StreamIncrementalAsync(
+        SqlConnection conn,
+        TableInfo table,
+        string? lastChecksum,
+        long rowCount,
+        ChunkSenderAsync sender,
+        int chunkSize,
+        CancellationToken ct)
     {
         string rvCol;
         await using (var cmd = new SqlCommand(@"
 SELECT TOP 1 c.name FROM sys.columns c
 JOIN sys.tables t ON t.object_id = c.object_id
 JOIN sys.schemas s ON s.schema_id = t.schema_id
-WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn))
+WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn) { CommandTimeout = _opts.CommandTimeoutSeconds })
         {
             cmd.Parameters.AddWithValue("@s", table.SchemaName);
             cmd.Parameters.AddWithValue("@t", table.TableName);
@@ -173,19 +221,20 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn))
             ? Convert.FromHexString(lastChecksum)
             : new byte[8];
 
-        var upserts = new List<UpsertRow>();
         byte[]? maxRv = null;
-        var top = _sync.MaxRowsPerTablePerCycle;
+        var totalStreamed = 0;
+        var chunkIndex = 0;
+        var batch = new List<UpsertRow>(chunkSize);
 
         while (!ct.IsCancellationRequested)
         {
-            var sql = $"SELECT TOP ({top}) *, [{rvCol}] AS __rv FROM [{table.SchemaName}].[{table.TableName}] " +
+            var sql = $"SELECT TOP ({chunkSize}) *, [{rvCol}] AS __rv FROM [{table.SchemaName}].[{table.TableName}] " +
                       $"WHERE [{rvCol}] > @rv ORDER BY [{rvCol}] ASC";
 
             var batchCount = 0;
             byte[]? batchLastRv = null;
 
-            await using (var qcmd = new SqlCommand(sql, conn) { CommandTimeout = 120 })
+            await using (var qcmd = new SqlCommand(sql, conn) { CommandTimeout = _opts.CommandTimeoutSeconds })
             {
                 qcmd.Parameters.Add(new SqlParameter("@rv", SqlDbType.Timestamp) { Value = cursorRv });
 
@@ -199,84 +248,150 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn))
                         maxRv = rv;
                     }
 
-                    upserts.Add(BuildUpsert(table, row));
-                    batchCount++;
-                }
-            }
-
-            if (batchCount == 0 || batchLastRv == null) break;
-
-            cursorRv = batchLastRv;
-            if (batchCount < top) break;
-        }
-
-        var allPks = await ReadAllPksAsync(conn, table, ct);
-
-        return new TableSnapshot(
-            table,
-            "rowversion",
-            rowCount,
-            maxRv != null ? Convert.ToHexString(maxRv).ToLowerInvariant() : lastChecksum,
-            upserts,
-            FullReplace: false,
-            AllPks: allPks);
-    }
-
-    private async Task<TableSnapshot> ReadFullScanAsync(
-        SqlConnection conn, TableInfo table, long rowCount, CancellationToken ct)
-    {
-        var upserts = new List<UpsertRow>();
-        var top = _sync.MaxRowsPerTablePerCycle;
-        var orderBy = string.Join(", ", table.PrimaryKeys.Select(c => $"[{c}] ASC"));
-        var offset = 0L;
-
-        while (!ct.IsCancellationRequested)
-        {
-            var sql = $"SELECT * FROM [{table.SchemaName}].[{table.TableName}] ORDER BY {orderBy} " +
-                      $"OFFSET {offset} ROWS FETCH NEXT {top} ROWS ONLY";
-
-            var batchCount = 0;
-            await using (var cmd = new SqlCommand(sql, conn) { CommandTimeout = 120 })
-            {
-                await using var rd = await cmd.ExecuteReaderAsync(ct);
-                while (await rd.ReadAsync(ct))
-                {
-                    var (row, _) = ReadRow(rd);
-                    upserts.Add(BuildUpsert(table, row));
+                    batch.Add(BuildUpsert(table, row));
                     batchCount++;
                 }
             }
 
             if (batchCount == 0) break;
 
-            offset += batchCount;
-            if (batchCount < top) break;
+            chunkIndex++;
+            // Não sabemos chunks_total a priori — usamos -1 e o servidor aceita.
+            // Marca como final se o batch foi menor que chunkSize (último).
+            var isFinal = batchCount < chunkSize;
+            var finalCs = isFinal && maxRv != null
+                ? Convert.ToHexString(maxRv).ToLowerInvariant()
+                : null;
+
+            var ok = await sender(batch, chunkIndex, -1, isFinal, finalCs, ct);
+            if (!ok)
+            {
+                _log.LogError("Sender returned false for {Schema}.{Table} chunk {Chunk}",
+                    table.SchemaName, table.TableName, chunkIndex);
+                throw new InvalidOperationException("Chunk send failed");
+            }
+
+            totalStreamed += batchCount;
+            batch.Clear();
+            // Hint pro GC liberar buffers SQL/JSON entre chunks
+            if (chunkIndex % 5 == 0) GC.Collect(0, GCCollectionMode.Optimized);
+
+            if (batchLastRv == null) break;
+            cursorRv = batchLastRv;
+            if (isFinal) break;
         }
 
-        var allPks = await ReadAllPksAsync(conn, table, ct);
-        return new TableSnapshot(table, "full_scan", rowCount, null, upserts, FullReplace: false, AllPks: allPks);
+        // Caso não tenha lido nada, ainda manda um chunk vazio final para atualizar o heartbeat
+        if (chunkIndex == 0)
+        {
+            await sender(Array.Empty<UpsertRow>(), 1, 1, true, lastChecksum, ct);
+            chunkIndex = 1;
+        }
+
+        return new TableStreamResult(
+            table,
+            "rowversion",
+            rowCount,
+            maxRv != null ? Convert.ToHexString(maxRv).ToLowerInvariant() : lastChecksum,
+            totalStreamed,
+            chunkIndex);
     }
 
-    private async Task<List<Dictionary<string, object?>>> ReadAllPksAsync(
-        SqlConnection conn, TableInfo table, CancellationToken ct)
+    /// <summary>
+    /// Streaming via keyset pagination (PK > cursor). Substitui o OFFSET/FETCH antigo
+    /// (que ficava cada vez mais lento). Funciona bem para tabelas sem rowversion mas com PK.
+    /// </summary>
+    private async Task<TableStreamResult> StreamKeysetAsync(
+        SqlConnection conn,
+        TableInfo table,
+        long rowCount,
+        ChunkSenderAsync sender,
+        int chunkSize,
+        CancellationToken ct)
     {
-        var pks = new List<Dictionary<string, object?>>();
-        var pkCols = string.Join(", ", table.PrimaryKeys.Select(c => $"[{c}]"));
-        var sql = $"SELECT {pkCols} FROM [{table.SchemaName}].[{table.TableName}]";
-        await using var cmd = new SqlCommand(sql, conn) { CommandTimeout = 120 };
-        await using var rd = await cmd.ExecuteReaderAsync(ct);
-        while (await rd.ReadAsync(ct))
+        var orderBy = string.Join(", ", table.PrimaryKeys.Select(c => $"[{c}] ASC"));
+        var pkCols = table.PrimaryKeys.Select(c => $"[{c}]").ToArray();
+
+        Dictionary<string, object?>? cursor = null;
+        var totalStreamed = 0;
+        var chunkIndex = 0;
+        var batch = new List<UpsertRow>(chunkSize);
+
+        while (!ct.IsCancellationRequested)
         {
-            var dict = new Dictionary<string, object?>(rd.FieldCount);
-            for (int i = 0; i < rd.FieldCount; i++)
+            string whereClause = "";
+            if (cursor != null)
             {
-                var name = rd.GetName(i);
-                var val = rd.IsDBNull(i) ? null : rd.GetValue(i);
-                dict[name] = NormalizeValue(val);
+                // Para PK simples: WHERE [pk] > @pk0
+                // Para PK composta: WHERE ([pk1],[pk2]) > (@pk0,@pk1) — SQL Server suporta tuple comparison
+                if (table.PrimaryKeys.Count == 1)
+                {
+                    whereClause = $"WHERE [{table.PrimaryKeys[0]}] > @pk0";
+                }
+                else
+                {
+                    var cols = string.Join(",", pkCols);
+                    var pars = string.Join(",", table.PrimaryKeys.Select((_, i) => $"@pk{i}"));
+                    whereClause = $"WHERE ({cols}) > ({pars})";
+                }
             }
-            pks.Add(dict);
+
+            var sql = $"SELECT TOP ({chunkSize}) * FROM [{table.SchemaName}].[{table.TableName}] " +
+                      $"{whereClause} ORDER BY {orderBy}";
+
+            var batchCount = 0;
+            Dictionary<string, object?>? lastPk = null;
+
+            await using (var qcmd = new SqlCommand(sql, conn) { CommandTimeout = _opts.CommandTimeoutSeconds })
+            {
+                if (cursor != null)
+                {
+                    for (int i = 0; i < table.PrimaryKeys.Count; i++)
+                    {
+                        var pkName = table.PrimaryKeys[i];
+                        cursor.TryGetValue(pkName, out var val);
+                        qcmd.Parameters.AddWithValue($"@pk{i}", val ?? DBNull.Value);
+                    }
+                }
+
+                await using var rd = await qcmd.ExecuteReaderAsync(ct);
+                while (await rd.ReadAsync(ct))
+                {
+                    var (row, _) = ReadRow(rd);
+                    var upsert = BuildUpsert(table, row);
+                    batch.Add(upsert);
+                    lastPk = upsert.Pk;
+                    batchCount++;
+                }
+            }
+
+            if (batchCount == 0) break;
+
+            chunkIndex++;
+            var isFinal = batchCount < chunkSize;
+            var ok = await sender(batch, chunkIndex, -1, isFinal, isFinal ? "" : null, ct);
+            if (!ok)
+            {
+                _log.LogError("Sender returned false for {Schema}.{Table} chunk {Chunk}",
+                    table.SchemaName, table.TableName, chunkIndex);
+                throw new InvalidOperationException("Chunk send failed");
+            }
+
+            totalStreamed += batchCount;
+            batch.Clear();
+            if (chunkIndex % 5 == 0) GC.Collect(0, GCCollectionMode.Optimized);
+
+            if (lastPk == null || isFinal) break;
+            cursor = lastPk;
         }
-        return pks;
+
+        if (chunkIndex == 0)
+        {
+            await sender(Array.Empty<UpsertRow>(), 1, 1, true, "", ct);
+            chunkIndex = 1;
+        }
+
+        return new TableStreamResult(table, "full_scan", rowCount, null, totalStreamed, chunkIndex);
     }
 
     private static (Dictionary<string, object?> row, byte[]? rv) ReadRow(SqlDataReader rd)
