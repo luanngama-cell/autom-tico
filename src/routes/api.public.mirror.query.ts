@@ -48,6 +48,121 @@ function json(body: unknown, status = 200) {
   });
 }
 
+function escapeSqlLiteral(value: string) {
+  return value.replace(/'/g, "''");
+}
+
+function toJsonbSql(value: unknown) {
+  return `'${escapeSqlLiteral(JSON.stringify(value))}'::jsonb`;
+}
+
+function parseScalarParam(value: string) {
+  const trimmed = value.trim();
+  if (trimmed === "") return "";
+  if (/^-?\d+$/.test(trimmed)) return Number(trimmed);
+  if (/^-?\d*\.\d+$/.test(trimmed)) return Number(trimmed);
+  if (trimmed === "true") return true;
+  if (trimmed === "false") return false;
+  if (trimmed === "null") return null;
+  return trimmed;
+}
+
+function parseAfterPk(url: URL, primaryKeys: string[]) {
+  const fromJson = url.searchParams.get("after_pk");
+  if (fromJson) {
+    const trimmed = fromJson.trim();
+    if (trimmed.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          const normalized = Object.fromEntries(
+            primaryKeys
+              .filter((key) => Object.prototype.hasOwnProperty.call(parsed, key))
+              .map((key) => [key, (parsed as Record<string, unknown>)[key]])
+          );
+          if (Object.keys(normalized).length > 0) return normalized;
+        }
+      } catch {
+        // fallback below
+      }
+    } else if (primaryKeys.length === 1) {
+      return { [primaryKeys[0]]: parseScalarParam(trimmed) };
+    }
+  }
+
+  const bracketed = Object.fromEntries(
+    primaryKeys
+      .map((key) => [key, url.searchParams.get(`after_pk[${key}]`)] as const)
+      .filter((entry): entry is readonly [string, string] => entry[1] !== null)
+      .map(([key, value]) => [key, parseScalarParam(value)])
+  );
+  if (Object.keys(bracketed).length > 0) return bracketed;
+
+  const prefixed = Object.fromEntries(
+    primaryKeys
+      .map((key) => {
+        const exact = url.searchParams.get(`after_${key}`);
+        const insensitive = exact ??
+          [...url.searchParams.entries()].find(([param]) => param.toLowerCase() === `after_${key}`.toLowerCase())?.[1] ??
+          null;
+        return [key, insensitive] as const;
+      })
+      .filter((entry): entry is readonly [string, string] => entry[1] !== null)
+      .map(([key, value]) => [key, parseScalarParam(value)])
+  );
+  return Object.keys(prefixed).length > 0 ? prefixed : null;
+}
+
+function buildPkOrderExpressions(primaryKeys: string[]) {
+  return primaryKeys.map((key) => `(pk->'${key.replace(/'/g, "''")}') ASC`).join(", ");
+}
+
+function buildPkAfterWhere(primaryKeys: string[], afterPk: Record<string, unknown>) {
+  const clauses = primaryKeys.map((key, index) => {
+    const equals = primaryKeys
+      .slice(0, index)
+      .map((prevKey) => `(pk->'${prevKey.replace(/'/g, "''")}') = ${toJsonbSql(afterPk[prevKey])}`)
+      .join(" AND ");
+    const current = `(pk->'${key.replace(/'/g, "''")}') > ${toJsonbSql(afterPk[key])}`;
+    return equals ? `(${equals} AND ${current})` : `(${current})`;
+  });
+
+  return clauses.length > 0 ? `(${clauses.join(" OR ")})` : null;
+}
+
+async function runPkQuery(params: {
+  syncTableId: string;
+  primaryKeys: string[];
+  limit: number;
+  offset: number;
+  updatedSince: string | null;
+  afterPk: Record<string, unknown> | null;
+}) {
+  const where = [`sync_table_id = '${escapeSqlLiteral(params.syncTableId)}'`];
+  if (params.updatedSince) {
+    where.push(`updated_at > '${escapeSqlLiteral(params.updatedSince)}'::timestamptz`);
+  }
+  if (params.afterPk) {
+    const keysetWhere = buildPkAfterWhere(params.primaryKeys, params.afterPk);
+    if (keysetWhere) where.push(keysetWhere);
+  }
+
+  const sql = [
+    "SELECT data, pk, updated_at",
+    "FROM public.synced_rows",
+    `WHERE ${where.join(" AND ")}`,
+    `ORDER BY ${buildPkOrderExpressions(params.primaryKeys)}`,
+    `LIMIT ${params.limit}`,
+    params.afterPk ? null : `OFFSET ${params.offset}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const { data, error } = await supabaseAdmin.rpc("execute_bi_script", { _sql: sql });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
 async function authorize(request: Request) {
   const auth = request.headers.get("authorization") ?? "";
   const bearer = auth.replace(/^Bearer\s+/i, "");
@@ -107,7 +222,6 @@ export const Route = createFileRoute("/api/public/mirror/query")({
         );
         const offset = Math.max(0, parseInt(url.searchParams.get("offset") ?? "0", 10) || 0);
         const updatedSince = url.searchParams.get("updated_since");
-        const afterPk = url.searchParams.get("after_pk"); // keyset pagination (recomendado para tabelas grandes)
         const orderBy = (url.searchParams.get("order") ?? "pk").toLowerCase() === "updated_at" ? "updated_at" : "pk";
         const includeTotal = url.searchParams.get("include_total") !== "false"; // default true
 
@@ -125,6 +239,8 @@ export const Route = createFileRoute("/api/public/mirror/query")({
           return json({ error: `Table ${schema}.${table} not found in mirror` }, 404);
         if (!syncTable.enabled)
           return json({ error: `Table ${schema}.${table} is disabled` }, 403);
+
+        const afterPk = parseAfterPk(url, syncTable.primary_keys ?? []);
 
         // total real da origem quando não há filtro incremental;
         // para consultas incrementais, conta apenas as linhas alteradas.
@@ -144,25 +260,37 @@ export const Route = createFileRoute("/api/public/mirror/query")({
           }
         }
 
-        let q = supabaseAdmin
-          .from("synced_rows")
-          .select("data, pk, updated_at")
-          .eq("sync_table_id", syncTable.id)
-          .order(orderBy, { ascending: orderBy === "pk" });
+        let rows: Array<{ data: Record<string, unknown>; pk: Record<string, unknown>; updated_at: string }> = [];
 
-        if (updatedSince) q = q.gt("updated_at", updatedSince);
-
-        // keyset (preferido para varreduras completas e tabelas > 5k)
-        if (afterPk && orderBy === "pk") {
-          q = q.gt("pk", afterPk).limit(limit);
+        if (orderBy === "pk" && Array.isArray(syncTable.primary_keys) && syncTable.primary_keys.length > 0) {
+          try {
+            rows = (await runPkQuery({
+              syncTableId: syncTable.id,
+              primaryKeys: syncTable.primary_keys,
+              limit,
+              offset,
+              updatedSince,
+              afterPk,
+            })) as Array<{ data: Record<string, unknown>; pk: Record<string, unknown>; updated_at: string }>;
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "query failed";
+            return json({ error: message }, 500);
+          }
         } else {
+          let q = supabaseAdmin
+            .from("synced_rows")
+            .select("data, pk, updated_at")
+            .eq("sync_table_id", syncTable.id)
+            .order(orderBy, { ascending: orderBy === "pk" });
+
+          if (updatedSince) q = q.gt("updated_at", updatedSince);
           q = q.range(offset, offset + limit - 1);
+
+          const { data, error } = await q;
+          if (error) return json({ error: error.message }, 500);
+          rows = (data ?? []) as Array<{ data: Record<string, unknown>; pk: Record<string, unknown>; updated_at: string }>;
         }
 
-        const { data, error } = await q;
-        if (error) return json({ error: error.message }, 500);
-
-        const rows = data ?? [];
         const nextAfterPk =
           orderBy === "pk" && rows.length === limit ? rows[rows.length - 1].pk : null;
 
