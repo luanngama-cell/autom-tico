@@ -300,6 +300,10 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn) { CommandTi
     /// <summary>
     /// Streaming via keyset pagination (PK > cursor). Substitui o OFFSET/FETCH antigo
     /// (que ficava cada vez mais lento). Funciona bem para tabelas sem rowversion mas com PK.
+    ///
+    /// PROTEÇÃO DE MEMÓRIA: monitora o tamanho do batch em bytes (estimativa via JSON).
+    /// Se passar de ~50 MB, força flush imediato mesmo sem ter chegado a chunkSize.
+    /// Isso protege contra tabelas com BLOBs/imagens DICOM que podem ter linhas de vários MB cada.
     /// </summary>
     private async Task<TableStreamResult> StreamKeysetAsync(
         SqlConnection conn,
@@ -309,6 +313,7 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn) { CommandTi
         int chunkSize,
         CancellationToken ct)
     {
+        const long MAX_BATCH_BYTES = 50L * 1024 * 1024; // 50 MB por batch
         var orderBy = string.Join(", ", table.PrimaryKeys.Select(c => $"[{c}] ASC"));
         var pkCols = table.PrimaryKeys.Select(c => $"[{c}]").ToArray();
 
@@ -316,14 +321,13 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn) { CommandTi
         var totalStreamed = 0;
         var chunkIndex = 0;
         var batch = new List<UpsertRow>(chunkSize);
+        long batchBytes = 0;
 
         while (!ct.IsCancellationRequested)
         {
             string whereClause = "";
             if (cursor != null)
             {
-                // Para PK simples: WHERE [pk] > @pk0
-                // Para PK composta: WHERE ([pk1],[pk2]) > (@pk0,@pk1) — SQL Server suporta tuple comparison
                 if (table.PrimaryKeys.Count == 1)
                 {
                     whereClause = $"WHERE [{table.PrimaryKeys[0]}] > @pk0";
@@ -341,6 +345,7 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn) { CommandTi
 
             var batchCount = 0;
             Dictionary<string, object?>? lastPk = null;
+            var readAnyThisQuery = false;
 
             await using (var qcmd = new SqlCommand(sql, conn) { CommandTimeout = _opts.CommandTimeoutSeconds })
             {
@@ -354,35 +359,60 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn) { CommandTi
                     }
                 }
 
-                await using var rd = await qcmd.ExecuteReaderAsync(ct);
+                // SequentialAccess: lê coluna a coluna sem buffering — essencial para tabelas com BLOBs.
+                await using var rd = await qcmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct);
                 while (await rd.ReadAsync(ct))
                 {
+                    readAnyThisQuery = true;
                     var (row, _) = ReadRow(rd);
                     var upsert = BuildUpsert(table, row);
                     batch.Add(upsert);
                     lastPk = upsert.Pk;
                     batchCount++;
+
+                    // Estima bytes do upsert (PK + Data já serializadas no hash anteriormente — refazemos uma estimativa rápida).
+                    batchBytes += EstimateRowBytes(upsert);
+
+                    // Se o batch ficou pesado, FLUSH antes de continuar lendo
+                    if (batchBytes >= MAX_BATCH_BYTES)
+                    {
+                        chunkIndex++;
+                        _log.LogInformation(
+                            "{Schema}.{Table}: flushing chunk {Chunk} early ({Rows} rows, ~{MB} MB) due to payload size",
+                            table.SchemaName, table.TableName, chunkIndex, batch.Count, batchBytes / (1024 * 1024));
+
+                        var okEarly = await sender(batch, chunkIndex, -1, false, null, ct);
+                        if (!okEarly) throw new InvalidOperationException("Early chunk send failed");
+
+                        totalStreamed += batch.Count;
+                        batch.Clear();
+                        batchBytes = 0;
+                        GC.Collect(0, GCCollectionMode.Optimized);
+                    }
                 }
             }
 
-            if (batchCount == 0) break;
+            if (!readAnyThisQuery && batch.Count == 0) break;
 
-            chunkIndex++;
-            var isFinal = batchCount < chunkSize;
-            var ok = await sender(batch, chunkIndex, -1, isFinal, isFinal ? "" : null, ct);
-            if (!ok)
+            if (batch.Count > 0)
             {
-                _log.LogError("Sender returned false for {Schema}.{Table} chunk {Chunk}",
-                    table.SchemaName, table.TableName, chunkIndex);
-                throw new InvalidOperationException("Chunk send failed");
+                chunkIndex++;
+                var isFinal = batchCount < chunkSize;
+                var ok = await sender(batch, chunkIndex, -1, isFinal, isFinal ? "" : null, ct);
+                if (!ok) throw new InvalidOperationException("Chunk send failed");
+
+                totalStreamed += batch.Count;
+                batch.Clear();
+                batchBytes = 0;
+                if (chunkIndex % 5 == 0) GC.Collect(0, GCCollectionMode.Optimized);
+
+                if (lastPk == null || isFinal) break;
+                cursor = lastPk;
             }
-
-            totalStreamed += batchCount;
-            batch.Clear();
-            if (chunkIndex % 5 == 0) GC.Collect(0, GCCollectionMode.Optimized);
-
-            if (lastPk == null || isFinal) break;
-            cursor = lastPk;
+            else
+            {
+                break;
+            }
         }
 
         if (chunkIndex == 0)
@@ -392,6 +422,23 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn) { CommandTi
         }
 
         return new TableStreamResult(table, "full_scan", rowCount, null, totalStreamed, chunkIndex);
+    }
+
+    /// <summary>Estimativa rápida de bytes de uma linha (sem reserializar JSON inteiro).</summary>
+    private static long EstimateRowBytes(UpsertRow row)
+    {
+        long total = 64; // overhead base
+        foreach (var kv in row.Data)
+        {
+            total += (kv.Key?.Length ?? 0) * 2;
+            total += kv.Value switch
+            {
+                null => 8,
+                string s => s.Length * 2 + 16,
+                _ => 32
+            };
+        }
+        return total;
     }
 
     private static (Dictionary<string, object?> row, byte[]? rv) ReadRow(SqlDataReader rd)
