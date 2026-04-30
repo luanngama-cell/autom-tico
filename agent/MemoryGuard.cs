@@ -41,7 +41,7 @@ public static class MemoryGuard
             }
 
             var pct = Math.Clamp(opts.MaxPercentOfTotalRam, 10, 90);
-            var limitBytes = (ulong)(totalRam * pct / 100.0);
+            var limitBytes = (ulong)(totalRam * (double)pct / 100.0);
 
             // Garante um piso de 256 MB e um teto razoável.
             if (limitBytes < 256UL * 1024 * 1024) limitBytes = 256UL * 1024 * 1024;
