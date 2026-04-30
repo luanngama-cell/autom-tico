@@ -389,6 +389,54 @@ export type Database = {
           },
         ]
       }
+      mv_registry: {
+        Row: {
+          created_at: string
+          description: string | null
+          enabled: boolean
+          id: string
+          last_refresh_duration_ms: number | null
+          last_refresh_error: string | null
+          last_refresh_status: string | null
+          last_refreshed_at: string | null
+          name: string
+          refresh_interval_minutes: number
+          row_count: number | null
+          sql_definition: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          id?: string
+          last_refresh_duration_ms?: number | null
+          last_refresh_error?: string | null
+          last_refresh_status?: string | null
+          last_refreshed_at?: string | null
+          name: string
+          refresh_interval_minutes?: number
+          row_count?: number | null
+          sql_definition: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          id?: string
+          last_refresh_duration_ms?: number | null
+          last_refresh_error?: string | null
+          last_refresh_status?: string | null
+          last_refreshed_at?: string | null
+          name?: string
+          refresh_interval_minutes?: number
+          row_count?: number | null
+          sql_definition?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -526,10 +574,14 @@ export type Database = {
           connection_id: string
           created_at: string
           enabled: boolean
+          excluded: boolean
+          excluded_at: string | null
+          excluded_reason: string | null
           has_rowversion: boolean
           id: string
           last_checksum: string | null
           last_error: string | null
+          last_rowversion: string | null
           last_synced_at: string | null
           primary_keys: string[]
           row_count: number
@@ -543,10 +595,14 @@ export type Database = {
           connection_id: string
           created_at?: string
           enabled?: boolean
+          excluded?: boolean
+          excluded_at?: string | null
+          excluded_reason?: string | null
           has_rowversion?: boolean
           id?: string
           last_checksum?: string | null
           last_error?: string | null
+          last_rowversion?: string | null
           last_synced_at?: string | null
           primary_keys?: string[]
           row_count?: number
@@ -560,10 +616,14 @@ export type Database = {
           connection_id?: string
           created_at?: string
           enabled?: boolean
+          excluded?: boolean
+          excluded_at?: string | null
+          excluded_reason?: string | null
           has_rowversion?: boolean
           id?: string
           last_checksum?: string | null
           last_error?: string | null
+          last_rowversion?: string | null
           last_synced_at?: string | null
           primary_keys?: string[]
           row_count?: number
@@ -655,6 +715,8 @@ export type Database = {
         }
         Returns: boolean
       }
+      refresh_due_mvs: { Args: never; Returns: Json }
+      refresh_mv: { Args: { _name: string }; Returns: Json }
       validate_bi_cron_token: { Args: { _token: string }; Returns: boolean }
       validate_maintenance_token: { Args: { _token: string }; Returns: boolean }
     }
