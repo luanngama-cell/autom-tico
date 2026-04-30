@@ -74,15 +74,20 @@ public class TableScheduler
         var slaCutoff = nowUtc - TimeSpan.FromHours(_largeOpts.MaxStalenessHours);
 
         // Calcula stale time de cada tabela grande
+        // IMPORTANTE: tabelas nunca sincronizadas (lastUtc = MinValue) NÃO contam como SLA breach
+        // — senão na primeira execução todas as 11 rodariam juntas e estouraria a memória.
+        // Elas entram pela rota normal (MaxPerCycle por ciclo).
         var ranked = largeAll
             .Select(t =>
             {
                 var key = $"{t.SchemaName}.{t.TableName}";
                 _lastSyncedUtc.TryGetValue(key, out var lastUtc);
-                if (lastUtc == default) lastUtc = DateTime.MinValue;
+                var neverSynced = lastUtc == default;
+                if (neverSynced) lastUtc = DateTime.MinValue;
                 var staleness = nowUtc - lastUtc;
-                var slaBreached = lastUtc < slaCutoff;
-                return new { Table = t, LastSync = lastUtc, Staleness = staleness, SlaBreached = slaBreached };
+                // SLA breach SÓ se já foi sincronizada antes E passou do cutoff
+                var slaBreached = !neverSynced && lastUtc < slaCutoff;
+                return new { Table = t, LastSync = lastUtc, Staleness = staleness, SlaBreached = slaBreached, NeverSynced = neverSynced };
             })
             .OrderByDescending(x => x.SlaBreached)        // SLA quebrado primeiro
             .ThenByDescending(x => x.Staleness)           // depois mais stale
@@ -92,11 +97,13 @@ public class TableScheduler
 
         if (slaBreached.Count > 0)
         {
-            // SLA quebrado — força execução INDEPENDENTE de memória
+            // SLA quebrado — força execução INDEPENDENTE de memória, mas LIMITADO a MaxPerCycle
+            // pra não tentar carregar 11 tabelas gigantes ao mesmo tempo.
+            var slaPick = slaBreached.Take(_largeOpts.MaxPerCycle).Select(x => x.Table).ToList();
             _log.LogWarning(
-                "SLA breach: {Count} large table(s) past {Hours}h staleness. Forcing run regardless of memory ({Mem:F0} MB).",
-                slaBreached.Count, _largeOpts.MaxStalenessHours, memMb);
-            return (normal, slaBreached.Select(x => x.Table).ToList());
+                "SLA breach: {Count} large table(s) past {Hours}h staleness. Forcing {Pick} this cycle (mem {Mem:F0} MB): {Names}",
+                slaBreached.Count, _largeOpts.MaxStalenessHours, slaPick.Count, memMb, string.Join(", ", slaPick.Select(t => t.TableName)));
+            return (normal, slaPick);
         }
 
         if (memMb >= pauseAbove)
