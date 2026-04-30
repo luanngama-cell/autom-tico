@@ -25,6 +25,7 @@ import { Route as ApiPublicMirrorAllPksRouteImport } from './routes/api.public.m
 import { Route as ApiPublicMaintenanceCleanupLogsRouteImport } from './routes/api.public.maintenance.cleanup-logs'
 import { Route as ApiPublicBiSnapshotRouteImport } from './routes/api.public.bi.snapshot'
 import { Route as ApiPublicBiRunScriptsRouteImport } from './routes/api.public.bi.run-scripts'
+import { Route as ApiPublicBiQueryRouteImport } from './routes/api.public.bi.query'
 import { Route as ApiPublicBiPushRouteImport } from './routes/api.public.bi.push'
 import { Route as ApiPublicBiForceRefreshRouteImport } from './routes/api.public.bi.force-refresh'
 import { Route as ApiPublicAgentManifestRouteImport } from './routes/api.public.agent.manifest'
@@ -112,6 +113,11 @@ const ApiPublicBiRunScriptsRoute = ApiPublicBiRunScriptsRouteImport.update({
   path: '/api/public/bi/run-scripts',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicBiQueryRoute = ApiPublicBiQueryRouteImport.update({
+  id: '/api/public/bi/query',
+  path: '/api/public/bi/query',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicBiPushRoute = ApiPublicBiPushRouteImport.update({
   id: '/api/public/bi/push',
   path: '/api/public/bi/push',
@@ -154,6 +160,7 @@ export interface FileRoutesByFullPath {
   '/api/public/agent/manifest': typeof ApiPublicAgentManifestRoute
   '/api/public/bi/force-refresh': typeof ApiPublicBiForceRefreshRoute
   '/api/public/bi/push': typeof ApiPublicBiPushRoute
+  '/api/public/bi/query': typeof ApiPublicBiQueryRoute
   '/api/public/bi/run-scripts': typeof ApiPublicBiRunScriptsRoute
   '/api/public/bi/snapshot': typeof ApiPublicBiSnapshotRoute
   '/api/public/maintenance/cleanup-logs': typeof ApiPublicMaintenanceCleanupLogsRoute
@@ -177,6 +184,7 @@ export interface FileRoutesByTo {
   '/api/public/agent/manifest': typeof ApiPublicAgentManifestRoute
   '/api/public/bi/force-refresh': typeof ApiPublicBiForceRefreshRoute
   '/api/public/bi/push': typeof ApiPublicBiPushRoute
+  '/api/public/bi/query': typeof ApiPublicBiQueryRoute
   '/api/public/bi/run-scripts': typeof ApiPublicBiRunScriptsRoute
   '/api/public/bi/snapshot': typeof ApiPublicBiSnapshotRoute
   '/api/public/maintenance/cleanup-logs': typeof ApiPublicMaintenanceCleanupLogsRoute
@@ -201,6 +209,7 @@ export interface FileRoutesById {
   '/api/public/agent/manifest': typeof ApiPublicAgentManifestRoute
   '/api/public/bi/force-refresh': typeof ApiPublicBiForceRefreshRoute
   '/api/public/bi/push': typeof ApiPublicBiPushRoute
+  '/api/public/bi/query': typeof ApiPublicBiQueryRoute
   '/api/public/bi/run-scripts': typeof ApiPublicBiRunScriptsRoute
   '/api/public/bi/snapshot': typeof ApiPublicBiSnapshotRoute
   '/api/public/maintenance/cleanup-logs': typeof ApiPublicMaintenanceCleanupLogsRoute
@@ -226,6 +235,7 @@ export interface FileRouteTypes {
     | '/api/public/agent/manifest'
     | '/api/public/bi/force-refresh'
     | '/api/public/bi/push'
+    | '/api/public/bi/query'
     | '/api/public/bi/run-scripts'
     | '/api/public/bi/snapshot'
     | '/api/public/maintenance/cleanup-logs'
@@ -249,6 +259,7 @@ export interface FileRouteTypes {
     | '/api/public/agent/manifest'
     | '/api/public/bi/force-refresh'
     | '/api/public/bi/push'
+    | '/api/public/bi/query'
     | '/api/public/bi/run-scripts'
     | '/api/public/bi/snapshot'
     | '/api/public/maintenance/cleanup-logs'
@@ -272,6 +283,7 @@ export interface FileRouteTypes {
     | '/api/public/agent/manifest'
     | '/api/public/bi/force-refresh'
     | '/api/public/bi/push'
+    | '/api/public/bi/query'
     | '/api/public/bi/run-scripts'
     | '/api/public/bi/snapshot'
     | '/api/public/maintenance/cleanup-logs'
@@ -289,6 +301,7 @@ export interface RootRouteChildren {
   ApiPublicAgentManifestRoute: typeof ApiPublicAgentManifestRoute
   ApiPublicBiForceRefreshRoute: typeof ApiPublicBiForceRefreshRoute
   ApiPublicBiPushRoute: typeof ApiPublicBiPushRoute
+  ApiPublicBiQueryRoute: typeof ApiPublicBiQueryRoute
   ApiPublicBiRunScriptsRoute: typeof ApiPublicBiRunScriptsRoute
   ApiPublicBiSnapshotRoute: typeof ApiPublicBiSnapshotRoute
   ApiPublicMaintenanceCleanupLogsRoute: typeof ApiPublicMaintenanceCleanupLogsRoute
@@ -411,6 +424,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicBiRunScriptsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/bi/query': {
+      id: '/api/public/bi/query'
+      path: '/api/public/bi/query'
+      fullPath: '/api/public/bi/query'
+      preLoaderRoute: typeof ApiPublicBiQueryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/bi/push': {
       id: '/api/public/bi/push'
       path: '/api/public/bi/push'
@@ -482,6 +502,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicAgentManifestRoute: ApiPublicAgentManifestRoute,
   ApiPublicBiForceRefreshRoute: ApiPublicBiForceRefreshRoute,
   ApiPublicBiPushRoute: ApiPublicBiPushRoute,
+  ApiPublicBiQueryRoute: ApiPublicBiQueryRoute,
   ApiPublicBiRunScriptsRoute: ApiPublicBiRunScriptsRoute,
   ApiPublicBiSnapshotRoute: ApiPublicBiSnapshotRoute,
   ApiPublicMaintenanceCleanupLogsRoute: ApiPublicMaintenanceCleanupLogsRoute,
