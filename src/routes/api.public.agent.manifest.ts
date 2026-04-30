@@ -63,7 +63,7 @@ export const Route = createFileRoute("/api/public/agent/manifest")({
 
         const { data: tables } = await supabaseAdmin
           .from("sync_tables")
-          .select("schema_name, table_name, strategy, primary_keys, has_rowversion, last_checksum, enabled")
+          .select("schema_name, table_name, strategy, primary_keys, has_rowversion, last_checksum, last_rowversion, enabled, excluded, excluded_reason")
           .eq("connection_id", connectionId);
 
         return json({
