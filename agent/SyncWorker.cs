@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using SqlSyncAgent.Options;
@@ -12,6 +13,10 @@ public class SyncWorker : BackgroundService
     private readonly SyncOptions _sync;
     private readonly LargeTablesOptions _largeOpts;
     private readonly ILogger<SyncWorker> _log;
+
+    // Quantas tabelas NORMAIS o agente sincroniza em paralelo.
+    // 2 = seguro pra PCs com 8GB. Aumente para 4 ou 8 em servidores maiores.
+    private const int PARALLEL_NORMAL_TABLES = 2;
 
     public SyncWorker(
         SqlReader reader,
@@ -32,8 +37,8 @@ public class SyncWorker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _log.LogInformation(
-            "SqlSyncAgent started. Interval={Interval}s Schema={Schema} ChunkSize={Chunk} LargeTables={Large}",
-            _sync.IntervalSeconds, _sync.Schema, _sync.MaxRowsPerTablePerCycle, _largeOpts.Tables.Count);
+            "SqlSyncAgent started. Interval={Interval}s Schema={Schema} ChunkSize={Chunk} Parallel={Par} LargeTables={Large}",
+            _sync.IntervalSeconds, _sync.Schema, _sync.MaxRowsPerTablePerCycle, PARALLEL_NORMAL_TABLES, _largeOpts.Tables.Count);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -62,53 +67,94 @@ public class SyncWorker : BackgroundService
         await _cloud.HeartbeatAsync(ct);
 
         var manifest = await _cloud.GetManifestAsync(ct);
+
+        // Lê do manifest: last_checksum, excluded, last_rowversion (Aprovação 2)
         var lastChecksums = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        var lastRowversions = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        var excluded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         if (manifest != null && manifest.RootElement.TryGetProperty("tables", out var tarr))
         {
             foreach (var el in tarr.EnumerateArray())
             {
                 var key = $"{el.GetProperty("schema_name").GetString()}.{el.GetProperty("table_name").GetString()}";
+
                 lastChecksums[key] = el.TryGetProperty("last_checksum", out var lc) && lc.ValueKind == JsonValueKind.String
                     ? lc.GetString() : null;
+
+                lastRowversions[key] = el.TryGetProperty("last_rowversion", out var lrv) && lrv.ValueKind == JsonValueKind.String
+                    ? lrv.GetString() : null;
+
+                if (el.TryGetProperty("excluded", out var ex) && ex.ValueKind == JsonValueKind.True)
+                {
+                    excluded.Add(key);
+                }
             }
         }
 
         var allTables = await _reader.DiscoverTablesAsync(ct);
+
+        // Aplica blacklist da nuvem (Aprovação 2)
+        var beforeFilter = allTables.Count;
+        allTables = allTables.Where(t => !excluded.Contains($"{t.SchemaName}.{t.TableName}")).ToList();
+        if (excluded.Count > 0)
+        {
+            _log.LogInformation("Cloud blacklist: {Excluded} table(s) skipped ({Before} -> {After})",
+                excluded.Count, beforeFilter, allTables.Count);
+        }
+
         var (normal, large) = _scheduler.SplitForCycle(allTables);
         _log.LogInformation(
             "Discovered {Total} tables → {Normal} normal + {Large} large (this cycle)",
             allTables.Count, normal.Count, large.Count);
 
-        var sentTables = 0;
         var totalToSend = normal.Count + large.Count;
+        var sentCounter = 0;
 
-        // 1. Tabelas normais primeiro (rápidas, ciclo "leve")
-        foreach (var t in normal)
+        // 1. Tabelas normais EM PARALELO (com semáforo) — Aprovação 2
+        using var sem = new SemaphoreSlim(PARALLEL_NORMAL_TABLES, PARALLEL_NORMAL_TABLES);
+        var normalTasks = normal.Select(async t =>
         {
-            if (await ProcessTableAsync(t, lastChecksums, sentTables, totalToSend, _sync.MaxRowsPerTablePerCycle, isLarge: false, ct))
+            await sem.WaitAsync(ct);
+            try
             {
-                sentTables++;
+                var ok = await ProcessTableAsync(
+                    t, lastChecksums, lastRowversions,
+                    Interlocked.CompareExchange(ref sentCounter, 0, 0),
+                    totalToSend, _sync.MaxRowsPerTablePerCycle, isLarge: false, ct);
+                if (ok) Interlocked.Increment(ref sentCounter);
             }
-        }
+            finally
+            {
+                sem.Release();
+            }
+        }).ToList();
 
-        // 2. Tabelas grandes (streaming + chunk pequeno)
+        await Task.WhenAll(normalTasks);
+
+        // 2. Tabelas grandes — SEMPRE sequencial (memória é o gargalo)
         foreach (var t in large)
         {
-            if (await ProcessTableAsync(t, lastChecksums, sentTables, totalToSend, _largeOpts.ChunkSize, isLarge: true, ct))
+            var ok = await ProcessTableAsync(
+                t, lastChecksums, lastRowversions,
+                sentCounter, totalToSend,
+                _largeOpts.ChunkSize, isLarge: true, ct);
+            if (ok)
             {
-                sentTables++;
+                Interlocked.Increment(ref sentCounter);
                 _scheduler.MarkSynced(t.SchemaName, t.TableName);
             }
         }
 
         await _cloud.HeartbeatAsync(ct);
         _log.LogInformation("Cycle done in {Ms}ms ({Sent}/{Total} tables, mem {Mem:F0} MB)",
-            (DateTime.UtcNow - started).TotalMilliseconds, sentTables, totalToSend, TableScheduler.CurrentMemoryMb());
+            (DateTime.UtcNow - started).TotalMilliseconds, sentCounter, totalToSend, TableScheduler.CurrentMemoryMb());
     }
 
     private async Task<bool> ProcessTableAsync(
         TableInfo t,
         Dictionary<string, string?> lastChecksums,
+        Dictionary<string, string?> lastRowversions,
         int sentTables,
         int totalTables,
         int chunkSize,
@@ -119,6 +165,11 @@ public class SyncWorker : BackgroundService
         {
             var key = $"{t.SchemaName}.{t.TableName}";
             lastChecksums.TryGetValue(key, out var lastCs);
+            lastRowversions.TryGetValue(key, out var lastRv);
+
+            // Se a nuvem mandou last_rowversion (delta sync infra), usa ele como cursor preferencial
+            // — o SqlReader.StreamIncrementalAsync já interpreta o checksum como rowversion hex.
+            var cursor = !string.IsNullOrEmpty(lastRv) ? lastRv : lastCs;
 
             ChunkSenderAsync sender = async (chunk, chunkIndex, chunksTotal, isFinal, finalCs, sct) =>
             {
@@ -135,8 +186,9 @@ public class SyncWorker : BackgroundService
                             primary_keys = t.PrimaryKeys,
                             has_rowversion = t.HasRowVersion,
                             strategy = t.HasRowVersion ? "rowversion" : "full_scan",
-                            row_count = chunk.Count, // approx — atualizado no final via última call
+                            row_count = chunk.Count,
                             last_checksum = isFinal ? finalCs ?? string.Empty : null,
+                            last_rowversion = isFinal && t.HasRowVersion ? finalCs : null,
                             upserts = chunk.Select(u => new
                             {
                                 pk = u.Pk,
@@ -144,10 +196,8 @@ public class SyncWorker : BackgroundService
                                 row_hash = u.RowHash,
                             }),
                             chunk_index = chunkIndex,
-                            chunks_total = chunksTotal > 0 ? chunksTotal : 9999, // placeholder; servidor só usa para detectar "final"
+                            chunks_total = chunksTotal > 0 ? chunksTotal : 9999,
                             full_replace = false,
-                            // Para tabelas grandes NUNCA enviamos all_pks (consumiria GBs de RAM).
-                            // Reconciliação de deletes para large tables fica desabilitada (deletes via tombstone seria próximo passo).
                             all_pks = (object?)null,
                         }
                     },
@@ -156,7 +206,7 @@ public class SyncWorker : BackgroundService
                 return await _cloud.IngestAsync(payload, sct);
             };
 
-            var result = await _reader.StreamTableAsync(t, lastCs, sender, chunkSize, ct);
+            var result = await _reader.StreamTableAsync(t, cursor, sender, chunkSize, ct);
 
             _log.LogInformation(
                 "{Tag} {Schema}.{Table}: {Rows} rows in {Chunks} chunks (strategy={Strategy})",
@@ -172,7 +222,7 @@ public class SyncWorker : BackgroundService
         }
         finally
         {
-            // Liberação agressiva entre tabelas
+            // Liberação de memória entre tabelas (mesmo em paralelo: GC é global)
             GC.Collect();
             GC.WaitForPendingFinalizers();
             GC.Collect();
