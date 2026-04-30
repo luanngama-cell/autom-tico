@@ -67,20 +67,45 @@ function parseScalarParam(value: string) {
   return trimmed;
 }
 
+function getSearchParamCaseInsensitive(url: URL, name: string) {
+  return (
+    url.searchParams.get(name) ??
+    [...url.searchParams.entries()].find(([param]) => param.toLowerCase() === name.toLowerCase())?.[1] ??
+    null
+  );
+}
+
+function normalizeAfterPkObject(input: Record<string, unknown>, primaryKeys: string[]) {
+  const inputEntries = Object.entries(input);
+  const normalized = Object.fromEntries(
+    primaryKeys
+      .map((key) => {
+        const entry = inputEntries.find(([inputKey]) => inputKey.toLowerCase() === key.toLowerCase());
+        return entry ? ([key, entry[1]] as const) : null;
+      })
+      .filter((entry): entry is readonly [string, unknown] => entry !== null)
+  );
+
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
+function hasAfterPkParam(url: URL) {
+  return [...url.searchParams.keys()].some((param) => {
+    const lower = param.toLowerCase();
+    return lower === "after_pk" || lower.startsWith("after_pk[") || lower.startsWith("after_");
+  });
+}
+
 function parseAfterPk(url: URL, primaryKeys: string[]) {
-  const fromJson = url.searchParams.get("after_pk");
+  const fromJson = getSearchParamCaseInsensitive(url, "after_pk");
   if (fromJson) {
     const trimmed = fromJson.trim();
     if (trimmed.startsWith("{")) {
       try {
         const parsed = JSON.parse(trimmed);
         if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          const normalized = Object.fromEntries(
-            primaryKeys
-              .filter((key) => Object.prototype.hasOwnProperty.call(parsed, key))
-              .map((key) => [key, (parsed as Record<string, unknown>)[key]])
-          );
-          if (Object.keys(normalized).length > 0) return normalized;
+          const normalized = normalizeAfterPkObject(parsed as Record<string, unknown>, primaryKeys);
+          if (normalized) return normalized;
         }
       } catch {
         // fallback below
@@ -90,27 +115,28 @@ function parseAfterPk(url: URL, primaryKeys: string[]) {
     }
   }
 
-  const bracketed = Object.fromEntries(
-    primaryKeys
-      .map((key) => [key, url.searchParams.get(`after_pk[${key}]`)] as const)
-      .filter((entry): entry is readonly [string, string] => entry[1] !== null)
-      .map(([key, value]) => [key, parseScalarParam(value)])
-  );
-  if (Object.keys(bracketed).length > 0) return bracketed;
-
-  const prefixed = Object.fromEntries(
-    primaryKeys
-      .map((key) => {
-        const exact = url.searchParams.get(`after_${key}`);
-        const insensitive = exact ??
-          [...url.searchParams.entries()].find(([param]) => param.toLowerCase() === `after_${key}`.toLowerCase())?.[1] ??
-          null;
-        return [key, insensitive] as const;
+  const bracketMatches = Object.fromEntries(
+    [...url.searchParams.entries()]
+      .map(([param, value]) => {
+        const match = /^after_pk\[(.+)\]$/i.exec(param);
+        return match ? ([match[1], parseScalarParam(value)] as const) : null;
       })
-      .filter((entry): entry is readonly [string, string] => entry[1] !== null)
-      .map(([key, value]) => [key, parseScalarParam(value)])
+      .filter((entry): entry is readonly [string, unknown] => entry !== null)
   );
-  return Object.keys(prefixed).length > 0 ? prefixed : null;
+  const normalizedBracketed = normalizeAfterPkObject(bracketMatches, primaryKeys);
+  if (normalizedBracketed) return normalizedBracketed;
+
+  const prefixedMatches = Object.fromEntries(
+    [...url.searchParams.entries()]
+      .map(([param, value]) => {
+        const match = /^after_(.+)$/i.exec(param);
+        return match && match[1].toLowerCase() !== "pk"
+          ? ([match[1], parseScalarParam(value)] as const)
+          : null;
+      })
+      .filter((entry): entry is readonly [string, unknown] => entry !== null)
+  );
+  return normalizeAfterPkObject(prefixedMatches, primaryKeys);
 }
 
 function buildPkOrderExpressions(primaryKeys: string[]) {
@@ -241,6 +267,14 @@ export const Route = createFileRoute("/api/public/mirror/query")({
           return json({ error: `Table ${schema}.${table} is disabled` }, 403);
 
         const afterPk = parseAfterPk(url, syncTable.primary_keys ?? []);
+        if (hasAfterPkParam(url) && !afterPk)
+          return json(
+            {
+              error:
+                "Invalid 'after_pk' cursor. Use after_pk={\"PK\":123}, after_pk[PK]=123, or after_PK=123.",
+            },
+            400
+          );
 
         // total real da origem quando não há filtro incremental;
         // para consultas incrementais, conta apenas as linhas alteradas.
