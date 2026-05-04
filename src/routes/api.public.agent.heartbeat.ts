@@ -12,7 +12,7 @@ export const Route = createFileRoute("/api/public/agent/heartbeat")({
       POST: async ({ request }) => {
         const auth = request.headers.get("authorization") ?? "";
         const agentSecret = request.headers.get("x-agent-secret") ?? "";
-        const expectedSecret = process.env.AGENT_INGEST_SECRET;
+        const expectedSecret = process.env.AGENTE_INGEST_SECRETO;
 
         if (!expectedSecret) return json({ error: "Server misconfigured" }, 500);
 

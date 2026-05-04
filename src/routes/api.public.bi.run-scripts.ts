@@ -12,7 +12,7 @@ import { createHash, timingSafeEqual } from "crypto";
  *        - calcula hash, faz delta vs `bi_snapshots`,
  *        - se mudou: salva snapshot + (se endpoint_url presente) faz POST.
  *
- * Auth: header X-Agent-Secret = AGENT_INGEST_SECRET (mesma chave usada pelo cron).
+ * Auth: header X-Agent-Secret = AGENTE_INGEST_SECRETO (mesma chave usada pelo cron).
  * Respeita `run_interval_minutes` por script.
  */
 
@@ -23,7 +23,7 @@ function sha256Hex(input: string) {
 async function isAuthorized(request: Request): Promise<boolean> {
   // Método 1: X-Agent-Secret (para testes manuais)
   const agentSecret = request.headers.get("x-agent-secret") ?? "";
-  const expected = process.env.AGENT_INGEST_SECRET;
+  const expected = process.env.AGENTE_INGEST_SECRETO;
   if (agentSecret && expected) {
     const a = Buffer.from(agentSecret);
     const b = Buffer.from(expected);
