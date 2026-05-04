@@ -109,7 +109,7 @@ async function authenticate(
 > {
   const auth = request.headers.get("authorization") ?? "";
   const agentSecret = request.headers.get("x-agent-secret") ?? "";
-  const expectedSecret = process.env.AGENT_INGEST_SECRET;
+  const expectedSecret = process.env.AGENTE_INGEST_SECRETO;
 
   // Modo broadcast: agente confiável envia para todos os destinos enabled
   if (agentSecret && expectedSecret) {

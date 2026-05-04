@@ -84,9 +84,9 @@ export const Route = createFileRoute("/api/public/bi/force-refresh")({
           .update({ last_run_at: null })
           .eq("id", dest.bi_script_id);
 
-        const agentSecret = process.env.AGENT_INGEST_SECRET;
+        const agentSecret = process.env.AGENTE_INGEST_SECRETO;
         if (!agentSecret) {
-          return json({ error: "AGENT_INGEST_SECRET not configured" }, 500);
+          return json({ error: "AGENTE_INGEST_SECRETO not configured" }, 500);
         }
 
         const reqOrigin = new URL(request.url).origin;

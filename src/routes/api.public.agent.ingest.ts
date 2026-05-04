@@ -7,7 +7,7 @@ import { z } from "zod";
  * Agent ingest endpoint.
  * Auth: Bearer token = `${connectionId}.${rawToken}`
  *   - rawToken is hashed (sha256) and compared against agent_tokens.token_hash
- *   - additionally requires X-Agent-Secret header matching AGENT_INGEST_SECRET
+ *   - additionally requires X-Agent-Secret header matching AGENTE_INGEST_SECRETO
  *
  * Body shape:
  * {
@@ -108,7 +108,7 @@ export const Route = createFileRoute("/api/public/agent/ingest")({
           // 1. Auth headers
           const auth = request.headers.get("authorization") ?? "";
           const agentSecret = request.headers.get("x-agent-secret") ?? "";
-          const expectedSecret = process.env.AGENT_INGEST_SECRET;
+          const expectedSecret = process.env.AGENTE_INGEST_SECRETO;
 
           if (!expectedSecret) {
             return json({ error: "Server misconfigured" }, 500);
