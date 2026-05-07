@@ -189,7 +189,7 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn) { CommandTi
 
         return table.HasRowVersion
             ? await StreamIncrementalAsync(conn, table, lastChecksum, rowCount, sender, chunkSize, ct)
-            : await StreamKeysetAsync(conn, table, rowCount, sender, chunkSize, ct);
+            : await StreamKeysetAsync(conn, table, lastChecksum, rowCount, sender, chunkSize, ct);
     }
 
     /// <summary>
@@ -308,6 +308,7 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn) { CommandTi
     private async Task<TableStreamResult> StreamKeysetAsync(
         SqlConnection conn,
         TableInfo table,
+        string? lastChecksum,
         long rowCount,
         ChunkSenderAsync sender,
         int chunkSize,
@@ -317,11 +318,23 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn) { CommandTi
         var orderBy = string.Join(", ", table.PrimaryKeys.Select(c => $"[{c}] ASC"));
         var pkCols = table.PrimaryKeys.Select(c => $"[{c}]").ToArray();
 
+        // Resume de onde parou no ciclo anterior (cursor persistido como JSON em last_checksum)
         Dictionary<string, object?>? cursor = null;
+        if (!string.IsNullOrWhiteSpace(lastChecksum) && lastChecksum.StartsWith("{"))
+        {
+            try
+            {
+                cursor = JsonSerializer.Deserialize<Dictionary<string, object?>>(lastChecksum);
+            }
+            catch { cursor = null; }
+        }
+
         var totalStreamed = 0;
         var chunkIndex = 0;
         var batch = new List<UpsertRow>(chunkSize);
         long batchBytes = 0;
+        Dictionary<string, object?>? lastPkOverall = null;
+        bool reachedEnd = false;
 
         while (!ct.IsCancellationRequested)
         {
@@ -345,7 +358,6 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn) { CommandTi
 
             var batchCount = 0;
             Dictionary<string, object?>? lastPk = null;
-            var readAnyThisQuery = false;
 
             await using (var qcmd = new SqlCommand(sql, conn) { CommandTimeout = _opts.CommandTimeoutSeconds })
             {
@@ -359,31 +371,22 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn) { CommandTi
                     }
                 }
 
-                // SequentialAccess: lê coluna a coluna sem buffering — essencial para tabelas com BLOBs.
                 await using var rd = await qcmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct);
                 while (await rd.ReadAsync(ct))
                 {
-                    readAnyThisQuery = true;
                     var (row, _) = ReadRow(rd);
                     var upsert = BuildUpsert(table, row);
                     batch.Add(upsert);
                     lastPk = upsert.Pk;
+                    lastPkOverall = upsert.Pk;
                     batchCount++;
-
-                    // Estima bytes do upsert (PK + Data já serializadas no hash anteriormente — refazemos uma estimativa rápida).
                     batchBytes += EstimateRowBytes(upsert);
 
-                    // Se o batch ficou pesado, FLUSH antes de continuar lendo
                     if (batchBytes >= MAX_BATCH_BYTES)
                     {
                         chunkIndex++;
-                        _log.LogInformation(
-                            "{Schema}.{Table}: flushing chunk {Chunk} early ({Rows} rows, ~{MB} MB) due to payload size",
-                            table.SchemaName, table.TableName, chunkIndex, batch.Count, batchBytes / (1024 * 1024));
-
                         var okEarly = await sender(batch, chunkIndex, -1, false, null, ct);
                         if (!okEarly) throw new InvalidOperationException("Early chunk send failed");
-
                         totalStreamed += batch.Count;
                         batch.Clear();
                         batchBytes = 0;
@@ -392,27 +395,31 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn) { CommandTi
                 }
             }
 
-            if (!readAnyThisQuery && batch.Count == 0) break;
+            // Esgotou a tabela?
+            if (batchCount < chunkSize) reachedEnd = true;
 
-            if (batch.Count > 0)
+            // Limite por ciclo: parar quando atingir MaxRowsPerTablePerCycle
+            // (mas SEMPRE flush do batch atual antes de sair, persistindo o cursor)
+            var hitCycleLimit = totalStreamed + batch.Count >= _sync.MaxRowsPerTablePerCycle;
+
+            if (batch.Count > 0 && (reachedEnd || hitCycleLimit || batchCount > 0))
             {
                 chunkIndex++;
-                var isFinal = batchCount < chunkSize;
-                var ok = await sender(batch, chunkIndex, -1, isFinal, isFinal ? "" : null, ct);
-                if (!ok) throw new InvalidOperationException("Chunk send failed");
+                // Cursor persistido: se chegou ao fim, manda "" pra resetar; senão, manda JSON do último PK
+                string? cursorJson = reachedEnd
+                    ? ""
+                    : (lastPk != null ? JsonSerializer.Serialize(lastPk) : null);
 
+                var ok = await sender(batch, chunkIndex, -1, true, cursorJson, ct);
+                if (!ok) throw new InvalidOperationException("Chunk send failed");
                 totalStreamed += batch.Count;
                 batch.Clear();
                 batchBytes = 0;
-                if (chunkIndex % 5 == 0) GC.Collect(0, GCCollectionMode.Optimized);
+            }
 
-                if (lastPk == null || isFinal) break;
-                cursor = lastPk;
-            }
-            else
-            {
-                break;
-            }
+            if (reachedEnd || hitCycleLimit) break;
+            if (lastPk == null) break;
+            cursor = lastPk;
         }
 
         if (chunkIndex == 0)
@@ -421,7 +428,12 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn) { CommandTi
             chunkIndex = 1;
         }
 
-        return new TableStreamResult(table, "full_scan", rowCount, null, totalStreamed, chunkIndex);
+        // Cursor final: "" se completou; JSON do último PK se parou no meio (próximo ciclo retoma daí)
+        var finalChecksum = reachedEnd
+            ? ""
+            : (lastPkOverall != null ? JsonSerializer.Serialize(lastPkOverall) : "");
+
+        return new TableStreamResult(table, "full_scan", rowCount, finalChecksum, totalStreamed, chunkIndex);
     }
 
     /// <summary>Estimativa rápida de bytes de uma linha (sem reserializar JSON inteiro).</summary>
