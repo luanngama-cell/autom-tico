@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
 using SqlSyncAgent.Options;
 
@@ -9,6 +10,11 @@ namespace SqlSyncAgent;
 
 public class CloudClient
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
     private readonly IHttpClientFactory _http;
     private readonly CloudOptions _opts;
     private readonly ILogger<CloudClient> _log;
@@ -45,7 +51,7 @@ public class CloudClient
     public async Task<bool> HeartbeatAsync(CancellationToken ct)
     {
         using var c = Client();
-        using var res = await c.PostAsJsonAsync("api/public/agent/heartbeat", new { status = "online" }, ct);
+        using var res = await c.PostAsJsonAsync("api/public/agent/heartbeat", new { status = "online" }, JsonOptions, ct);
         var body = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
         {
@@ -59,7 +65,7 @@ public class CloudClient
     public async Task<bool> IngestAsync(object payload, CancellationToken ct)
     {
         using var c = Client();
-        using var res = await c.PostAsJsonAsync("api/public/agent/ingest", payload, ct);
+        using var res = await c.PostAsJsonAsync("api/public/agent/ingest", payload, JsonOptions, ct);
         var body = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
         {
