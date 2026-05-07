@@ -35,7 +35,7 @@ const TableSchema = z.object({
   has_rowversion: z.boolean(),
   strategy: z.enum(["full_scan", "rowversion"]),
   row_count: z.number().int().min(0),
-  last_checksum: z.string().max(64).nullable().optional(),
+  last_checksum: z.string().max(8192).nullable().optional(),
   schema_hash: z.string().max(128).nullable().optional(),
   chunk_index: z.number().int().min(1).optional(),
   chunks_total: z.number().int().min(1).optional(),
