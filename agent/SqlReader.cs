@@ -189,7 +189,7 @@ WHERE s.name = @s AND t.name = @t AND c.system_type_id = 189", conn) { CommandTi
 
         return table.HasRowVersion
             ? await StreamIncrementalAsync(conn, table, lastChecksum, rowCount, sender, chunkSize, ct)
-            : await StreamKeysetAsync(conn, table, rowCount, sender, chunkSize, ct);
+            : await StreamKeysetAsync(conn, table, lastChecksum, rowCount, sender, chunkSize, ct);
     }
 
     /// <summary>
