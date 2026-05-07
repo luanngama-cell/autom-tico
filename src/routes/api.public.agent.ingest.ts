@@ -59,6 +59,7 @@ const TableSchema = z.object({
   all_pks: z
     .array(z.record(z.string(), z.unknown()))
     .max(2_000_000)
+    .nullable()
     .optional(),
 });
 
