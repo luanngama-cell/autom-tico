@@ -99,7 +99,7 @@ function DashboardLayout() {
     <div className="flex min-h-screen bg-background">
       <aside className="flex w-64 flex-col border-r bg-card">
         <div className="border-b px-6 py-5">
-          <h1 className="text-lg font-semibold tracking-tight">SQL Sync</h1>
+          <h1 className="text-lg font-semibold tracking-tight">Banco Espelho API</h1>
           <p className="text-xs text-muted-foreground">Cloud Mirror Console</p>
         </div>
         <nav className="flex-1 space-y-1 p-3">
